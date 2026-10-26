@@ -2,37 +2,74 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Rocket Ball</title>
   <link rel="stylesheet" href="style.css">
-  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
 </head>
 <body>
   <div id="hud" class="hidden">
     <div id="score"><span id="sb">0</span><span id="time">5:00</span><span id="so">0</span></div>
+    <div id="replay" class="hidden"><b>● REPLAY</b><small id="skip">Saut pour passer</small></div>
     <div id="msg"><b id="mb"></b><small id="ms"></small></div>
     <div id="cam">CAMÉRA BALLE</div>
     <div id="boost"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle id="ring" cx="50" cy="50" r="42"/></svg><b id="bv">33</b></div>
   </div>
 
+  <div id="touch" class="hidden">
+    <div id="stick"><div id="knob"></div></div>
+    <div id="tbtns"><button id="tDrift">DRIFT</button><button id="tBoost">BOOST</button><button id="tJump">SAUT</button></div>
+    <div id="ttop"><button id="tCam">CAM</button><button id="tPause">❚❚</button></div>
+  </div>
+  <div id="rotate">Tourne ton téléphone en mode paysage ↻</div>
+
   <div id="menu" class="screen">
-    <h1>ROCKET <span>BALL</span></h1>
-    <p class="sub">Le foot en voitures-fusées, directement dans ton navigateur</p>
-    <div class="row"><span class="lbl">Mode</span><button data-m="1" class="on">1 v 1</button><button data-m="2">2 v 2</button><button data-m="3">3 v 3</button></div>
-    <div class="row"><span class="lbl">Bots</span><button data-d="0">Débutant</button><button data-d="1" class="on">Pro</button><button data-d="2">All-Star</button></div>
-    <button id="play" class="big">JOUER</button>
-    <p class="keys">
-      <kbd>W A S D</kbd> / <kbd>↑ ← ↓ →</kbd> conduire · <kbd>Espace</kbd> / clic droit sauter (×2 = flip) · <kbd>Shift</kbd> / clic gauche boost<br>
-      <kbd>X</kbd> drift · <kbd>Q</kbd> <kbd>E</kbd> rotation en l'air · <kbd>C</kbd> caméra balle · <kbd>Échap</kbd> pause · 🎮 manette compatible
-    </p>
+    <div class="panel">
+      <h1>ROCKET <span>BALL</span></h1>
+      <p class="sub">Le foot en voitures-fusées, directement dans ton navigateur</p>
+      <div class="row"><span class="lbl">Mode</span><button data-m="1" class="on">1 v 1</button><button data-m="2">2 v 2</button><button data-m="3">3 v 3</button></div>
+      <div class="row"><span class="lbl">Bots</span><button data-d="0">Débutant</button><button data-d="1" class="on">Pro</button><button data-d="2">All-Star</button></div>
+      <div class="row" id="models"><span class="lbl">Voiture</span></div>
+      <div class="row" id="accents"><span class="lbl">Couleur</span></div>
+      <div class="row" id="trails"><span class="lbl">Boost</span></div>
+      <div class="row"><button id="play" class="big">JOUER</button><button id="onlineBtn" class="big alt">EN LIGNE</button></div>
+      <p class="keys">
+        <kbd>W A S D</kbd> / <kbd>↑ ← ↓ →</kbd> conduire · <kbd>Espace</kbd> / clic droit sauter (×2 = flip) · <kbd>Shift</kbd> / clic gauche boost<br>
+        <kbd>X</kbd> drift (en l'air : rotation) · <kbd>Q</kbd> <kbd>E</kbd> rotation en l'air · <kbd>C</kbd> caméra balle · <kbd>Échap</kbd> pause · 🎮 manette OK
+      </p>
+    </div>
+  </div>
+
+  <div id="online" class="screen hidden">
+    <div class="panel">
+      <h2>Jouer en ligne</h2>
+      <div class="row"><span class="lbl">Pseudo</span><input id="pseudo" maxlength="12" autocomplete="off"></div>
+      <div class="row"><span class="lbl">Mode</span><button data-m="1" class="on">1 v 1</button><button data-m="2">2 v 2</button><button data-m="3">3 v 3</button></div>
+      <div class="row"><button id="host">Créer une partie</button></div>
+      <div class="row"><input id="code" maxlength="5" placeholder="CODE" autocomplete="off"><button id="join">Rejoindre</button></div>
+      <p id="netmsg"></p>
+      <div id="lobby" class="hidden">
+        <p>Code de la partie : <b id="room"></b></p>
+        <ul id="players"></ul>
+        <button id="launch" class="big">LANCER</button>
+      </div>
+      <button id="back">Retour</button>
+    </div>
   </div>
 
   <div id="over" class="screen hidden">
-    <h1 id="ot"></h1>
-    <p id="ox" class="sub"></p>
-    <div class="row"><button id="oa" class="big"></button><button id="ob"></button></div>
+    <div class="panel">
+      <h1 id="ot"></h1>
+      <p id="ox" class="sub"></p>
+      <div class="row"><button id="oa" class="big"></button><button id="ob"></button></div>
+    </div>
   </div>
 
-  <script type="module" src="game.js"></script>
+  <div id="err" class="hidden"></div>
+
+  <script src="lib/three.min.js"></script>
+  <script src="lib/peerjs.min.js"></script>
+  <script src="game.js"></script>
+  <script src="touch.js"></script>
+  <script src="online.js"></script>
 </body>
 </html>
