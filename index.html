@@ -4,15 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Rocket Ball</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,700;0,800;1,800;1,900&family=Russo+One&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="hud" class="hidden">
-    <div id="score"><span id="sb">0</span><span id="time">5:00</span><span id="so">0</span></div>
+    <div id="speed"></div>
+    <div id="score">
+      <div class="team blue"><small>BLEU</small><span id="sb">0</span></div>
+      <span id="time">5:00</span>
+      <div class="team orange"><span id="so">0</span><small>ORANGE</small></div>
+    </div>
     <div id="replay" class="hidden"><b>● REPLAY</b><small id="skip">Saut pour passer</small></div>
     <div id="msg"><b id="mb"></b><small id="ms"></small></div>
     <div id="cam">CAMÉRA BALLE</div>
-    <div id="boost"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42"/><circle id="ring" cx="50" cy="50" r="42"/></svg><b id="bv">33</b></div>
+    <div id="boost">
+      <svg viewBox="0 0 100 100"><defs><linearGradient id="bgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe680"/><stop offset="1" stop-color="#ff6a00"/></linearGradient></defs><circle cx="50" cy="50" r="42"/><circle id="ring" cx="50" cy="50" r="42"/></svg>
+      <b id="bv">33</b><small>BOOST</small>
+    </div>
   </div>
 
   <div id="touch" class="hidden">
@@ -68,6 +79,7 @@
 
   <script src="lib/three.min.js"></script>
   <script src="lib/peerjs.min.js"></script>
+  <script src="scene.js"></script>
   <script src="game.js"></script>
   <script src="touch.js"></script>
   <script src="online.js"></script>
