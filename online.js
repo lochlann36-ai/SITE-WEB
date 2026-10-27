@@ -63,7 +63,7 @@ function hostStart() { // équipes alternées, places libres complétées par de
   const roster = [...teams[0], ...teams[1]], pub = roster.map(({ team, name, model, accent, trail }) => ({ team, name, model, accent, trail }));
   NET.on = true; NET.ev = [];
   start(roster.map(r => ({ ...r, bot: !r.me && !r.conn })));
-  roster.forEach((r, i) => r.conn?.send({ t: 'start', mode: S.mode, roster: pub, you: i }));
+  roster.forEach((r, i) => r.conn?.send({ t: 'start', mode: S.mode, roster: pub, you: i, theme: THEME })); // tout le monde joue dans l'ambiance de l'hôte
 }
 const r2 = x => Math.round(x * 100) / 100;
 function sendSnap() {
@@ -97,7 +97,7 @@ function joinGame(code) {
 function guestData(d) {
   if (d.t === 'full') { netClose(); netMsg('Partie pleine ou déjà lancée'); }
   else if (d.t === 'lobby') { $('room').textContent = NET.code; showLobby(d.names, false); }
-  else if (d.t === 'start') { S.mode = d.mode; NET.on = true; NET.snap = null; start(d.roster.map((r, i) => ({ ...r, me: i === d.you }))); }
+  else if (d.t === 'start') { S.mode = d.mode; if (d.theme && d.theme !== THEME) applyTheme(d.theme); NET.on = true; NET.snap = null; start(d.roster.map((r, i) => ({ ...r, me: i === d.you }))); }
   else if (d.t === 's' && S.phase !== 'menu') applySnap(d);
 }
 function applySnap(d) {

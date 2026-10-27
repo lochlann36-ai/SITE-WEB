@@ -107,6 +107,8 @@ input { font: 700 15px var(--ui); color: var(--fg); background: #ffffff10; borde
 .keys { max-width: 620px; font-size: 13px; line-height: 2; opacity: .75; }
 kbd { font: 700 12px var(--ui); padding: 1px 7px; border: 1px solid #ffffff40; border-bottom-width: 3px; border-radius: 6px; background: #ffffff14; }
 #over .panel { min-width: min(420px, 100%); }
+#over.podium { justify-content: flex-end; background: linear-gradient(transparent 50%, #05070fcc); } /* fin de match : le podium reste visible */
+#over.podium .panel { margin-block: 0 4vh; padding: 16px 28px; gap: 8px; } #over.podium h1 { font-size: clamp(34px, 5vw, 56px); }
 #err { position: fixed; left: 12px; bottom: 12px; z-index: 10; max-width: min(560px, calc(100% - 24px)); padding: 10px 14px; border-radius: 8px; background: #b3261ee6; font-size: 14px; user-select: text; }
 
 /* Grand écran : menu à gauche, voiture du garage à droite */

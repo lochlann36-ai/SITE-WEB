@@ -10,7 +10,7 @@ function particles(n, add) {
     vertexShader: 'attribute float size; attribute vec4 col; uniform float ps; varying vec4 vC; void main() { vC = col; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_PointSize = size * ps / -mv.z; gl_Position = projectionMatrix * mv; }',
     fragmentShader: 'uniform sampler2D map; varying vec4 vC; void main() { gl_FragColor = vC * texture2D(map, gl_PointCoord); }',
   });
-  const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = add ? 3 : 2; scene.add(pts);
+  const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = add ? 3 : 2; pts.userData.noEnv = true; scene.add(pts);
   const P = Array.from({ length: n }, () => ({ p: new V3(), v: new V3(), c: new C(), life: 0, max: 1 }));
   let i = 0;
   return {
@@ -36,20 +36,20 @@ const haze = HQ && (() => {
   for (let i = 0; i < n; i++) { pos.set([rnd(2 * W), 1 + Math.random() * 22, rnd(2 * L)], i * 3); seed[i] = Math.random() * 100; }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
   const m = new THREE.ShaderMaterial({
-    uniforms: { t: { value: 0 }, ps: FXA.mat.uniforms.ps, map: { value: radial } }, ...additive(),
+    uniforms: { t: { value: 0 }, k: { value: 1 }, ps: FXA.mat.uniforms.ps, map: { value: radial } }, ...additive(),
     vertexShader: `attribute float seed; uniform float t, ps; varying float vA;
       void main() { vec3 p = position + vec3(sin(t * .2 + seed), sin(t * .15 + seed * 1.3) * .8, cos(t * .17 + seed)) * 1.5;
         vec4 mv = modelViewMatrix * vec4(p, 1.); vA = .5 + .5 * sin(t * 1.5 + seed * 7.); gl_PointSize = .09 * ps / -mv.z; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: 'uniform sampler2D map; varying float vA; void main() { gl_FragColor = vec4(vec3(1., .93, .8) * .6 * vA * texture2D(map, gl_PointCoord).a, 1.); }',
+    fragmentShader: 'uniform sampler2D map; uniform float k; varying float vA; void main() { gl_FragColor = vec4(vec3(1., .93, .8) * .6 * k * vA * texture2D(map, gl_PointCoord).a, 1.); }',
   });
-  const p = new THREE.Points(g, m); p.frustumCulled = false; scene.add(p); return m;
+  const p = new THREE.Points(g, m); p.frustumCulled = false; p.userData.noEnv = true; scene.add(p); return m;
 })();
 
 // ----- Ondes de choc, flash lumineux, débris, fusées de feu d'artifice -----
-const waves = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.MeshBasicMaterial(additive({ side: THREE.DoubleSide }))); m.visible = false; scene.add(m); return { m, t: 1 }; });
+const waves = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.MeshBasicMaterial(additive({ side: THREE.DoubleSide }))); m.visible = false; m.userData.noEnv = true; scene.add(m); return { m, t: 1 }; });
 const flash = new THREE.PointLight(0xffffff, 0, 70, 1.4); scene.add(flash);
-const debris = Array.from({ length: 30 }, () => { const m = new THREE.Mesh(new THREE.BoxGeometry(.2, .1, .26), new THREE.MeshStandardMaterial({ metalness: .6, roughness: .4 })); m.castShadow = true; m.visible = false; scene.add(m); return { m, v: new V3(), w: new V3(), t: 0 }; });
-const rockets = [], roofBase = roofLight.color.clone(), ledBase = ledMat.color.clone();
+const debris = Array.from({ length: 30 }, () => { const m = new THREE.Mesh(new THREE.BoxGeometry(.2, .1, .26), new THREE.MeshStandardMaterial({ metalness: .6, roughness: .4 })); m.castShadow = true; m.visible = false; m.userData.noEnv = true; scene.add(m); return { m, v: new V3(), w: new V3(), t: 0 }; });
+const rockets = [];
 let wi = 0, di = 0, hype = 0, hypeTeam = 0;
 
 const EFX = {
@@ -92,7 +92,7 @@ function ribbon(color, n = 22) {
   for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 4)); g.setIndex(idx);
   const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, ...additive({ side: THREE.DoubleSide }) }));
-  m.frustumCulled = false; scene.add(m);
+  m.frustumCulled = false; m.userData.noEnv = true; scene.add(m);
   return {
     m,
     update(p, side, on) {
@@ -113,7 +113,7 @@ for (let k = 0; k < SK; k++) skIdx.push(k * 4, k * 4 + 1, k * 4 + 2, k * 4 + 1, 
 const skGeo = new THREE.BufferGeometry();
 skGeo.setAttribute('position', new THREE.BufferAttribute(skPos, 3)); skGeo.setAttribute('color', new THREE.BufferAttribute(skCol, 4)); skGeo.setIndex(skIdx);
 const skids = new THREE.Mesh(skGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
-skids.frustumCulled = false; skids.renderOrder = 1; scene.add(skids);
+skids.frustumCulled = false; skids.renderOrder = 1; skids.userData.noEnv = true; scene.add(skids);
 let ski = 0;
 function skid(a, b) {
   const s = new V3(a.z - b.z, 0, b.x - a.x).normalize().multiplyScalar(.08), k = ski = (ski + 1) % SK;
@@ -124,7 +124,8 @@ function skid(a, b) {
 // ----- Animation de tous les effets (appelée à chaque image) -----
 function animFx(dt, t) {
   FXA.update(dt); FXN.update(dt);
-  if (haze) haze.uniforms.t.value = t;
+  if (haze) { haze.uniforms.t.value = t; haze.uniforms.k.value = LOOK.haze; }
+  CROWD.t.value = BANNER.t.value = t; CROWD.hype.value = hype; // public qui saute, bannières qui flottent
   waves.forEach(w => { if (!w.m.visible) return; w.t += dt * w.sp; w.m.scale.setScalar(.5 + w.size * (1 - (1 - Math.min(w.t, 1)) ** 3)); w.m.material.opacity = .5 * (1 - w.t); w.m.visible = w.t < 1; });
   flash.intensity *= Math.exp(-5 * dt); POST.flash *= Math.exp(-4 * dt);
   debris.forEach(d => {
@@ -145,10 +146,15 @@ function animFx(dt, t) {
   }
   for (let k = 0; k < SK; k++) { skAge[k] += dt; const a = .55 * Math.max(0, 1 - skAge[k] / 10); for (let j = 0; j < 4; j++) skCol.set([.03, .05, .02, a], k * 16 + j * 4); }
   skGeo.attributes.color.needsUpdate = true;
-  // Public et stade : écrans LED, flashs d'appareils photo, projecteurs aux couleurs de l'équipe qui vient de marquer
-  ledTex.offset.x = t * .04; crowdTex.offset.y = hype > .05 ? Math.abs(Math.sin(t * 9)) * .006 * hype : 0;
+  // Stade : écrans LED, projecteurs, anneau central et faisceaux aux couleurs de l'équipe qui vient de marquer, jets de flammes
+  ledTex.offset.x = t * .04;
   const tc = new C(COL[hypeTeam]), pulse = hype * (.6 + .4 * Math.sin(t * 12));
-  roofLight.color.copy(roofBase).lerp(tc.clone().multiplyScalar(5), pulse); ledMat.color.copy(ledBase).lerp(tc.multiplyScalar(2.5), hype);
+  roofLight.color.copy(LOOK.roof).lerp(tc.clone().multiplyScalar(5), pulse); ledMat.color.copy(LOOK.led).lerp(tc.clone().multiplyScalar(2.5), hype);
+  ringMat.color.copy(LOOK.ring).lerp(tc.clone().multiplyScalar(5), pulse); if (shaftMat) shaftMat.uniforms.c.value.copy(LOOK.shaft).lerp(tc, hype * .8);
+  if (hype > .55) JETS.forEach(j => {
+    for (let i = 0; i < (HQ ? 3 : 1); i++) FXA.emit(j, new V3(rnd(1.5), 15 + Math.random() * 9, rnd(1.5)), { c: pick([0xff5a10, 0xffa030, 0xffe080]), l: .8, s: .9, k: 3, gr: 6, g: -.3 });
+    if (Math.random() < .3) FXN.emit(j.clone().setY(j.y + 6), new V3(rnd(2), 6, rnd(2)), { c: 0x3a3440, l: 2, s: 2, g: 5, a: .35 });
+  });
   hype = Math.max(0, hype - dt * .2);
   for (let n = (1 + hype * 20) * dt * 30; n > Math.random(); n--) {
     const s = pick(STANDS), u = Math.random(), d = s.d0 + u * (28 - s.d0);

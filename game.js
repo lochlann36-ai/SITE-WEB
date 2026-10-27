@@ -11,7 +11,7 @@ const ACCENTS = ['#f4f4f4', '#ffd400', '#00e5ff', '#ff3d7f', '#7cff4f', '#222222
 
 // Garage sauvegardé dans le navigateur
 const store = v => { try { return v ? localStorage.setItem('rocketball', JSON.stringify(v)) : JSON.parse(localStorage.getItem('rocketball')) || {}; } catch { return {}; } };
-const GAR = Object.assign({ name: 'Joueur', model: 'Éclair', accent: ACCENTS[0], trail: TRAILS[0] }, store());
+const GAR = Object.assign({ name: 'Joueur', model: 'Éclair', accent: ACCENTS[0], trail: TRAILS[0], theme: 'Coucher de soleil' }, store());
 const save = () => store(GAR);
 
 // ===== Balle =====
@@ -306,7 +306,7 @@ function msg(big, t, small = '', team) { // texte au centre de l'écran (relanc�
 function overlay(t, x, a, fa, b, fb) {
   $('ot').textContent = t; $('ox').textContent = x;
   Object.assign($('oa'), { textContent: a, onclick: fa }); Object.assign($('ob'), { textContent: b || '', onclick: fb });
-  $('ob').classList.toggle('hidden', !b); $('over').classList.remove('hidden');
+  $('ob').classList.toggle('hidden', !b); $('over').classList.remove('hidden', 'podium');
 }
 
 const botRoster = (team, name) => ({ team, name, model: pick(Object.keys(MODELS)), accent: pick(ACCENTS), trail: pick(TRAILS), bot: true });
@@ -321,8 +321,8 @@ function start(roster = localRoster()) {
   if (TOUCH_DEV) document.documentElement.requestFullscreen?.()?.catch?.(() => { });
   cars.forEach(removeCar);
   if (preview) { removeCar(preview); preview = null; }
-  showroom.visible = false;
-  cars = roster.map(makeCar); me = cars.find(c => c.me) || cars[0];
+  showroom.visible = podium.visible = false; POST.dof = 0;
+  cars = roster.map(makeCar); me = cars.find(c => c.me) || cars[0]; faceLogo(me.team);
   Object.assign(S, { score: [0, 0], time: 300, ot: false, paused: false, phase: 'count', timer: 3 });
   acc = 0; REC.length = 0; REPLAY = [];
   ['menu', 'over', 'online'].forEach(i => $(i).classList.add('hidden'));
@@ -352,15 +352,31 @@ function goal(t) {
 const overtime = () => { S.ot = true; S.time = 0; kickoff(); };
 const afterGoal = () => S.ot ? end() : S.time > 0 ? kickoff() : S.score[0] === S.score[1] ? overtime() : end();
 function end() { S.phase = 'end'; if (NET.host) sendSnap(); showEnd(); }
-function showEnd() {
-  const a = S.score[me.team], b = S.score[1 - me.team], again = () => NET.host ? hostStart() : start();
+function showEnd() { // podium : l'équipe gagnante sur les marches, boost allumé, feux d'artifice
+  const a = S.score[me.team], b = S.score[1 - me.team], win = +(S.score[1] > S.score[0]), again = () => NET.host ? hostStart() : start();
+  const champs = cars.filter(c => c.team === win).sort((x, y) => (y === me) - (x === me));
+  cars.forEach(c => { c.mesh.visible = c.team === win; c.parts.extra.forEach(o => o.visible = c.team === win); });
+  champs.forEach((c, i) => { c.mesh.position.set(PODIUM[i][0], PODIUM[i][1] + REST, 0); c.mesh.quaternion.identity(); c.v.set(0, 0, 0); Object.assign(c, { in: {}, wp: null, sup: false }); c.flame.visible = true; });
+  B.mesh.visible = false; showPodium(win); EFX.fireworks(win); hype = 1; hypeTeam = win; S.podT = 0;
+  setBoard(S.score[0], S.score[1], '', win, win ? 'VICTOIRE ORANGE' : 'VICTOIRE BLEUE');
   overlay(a > b ? 'VICTOIRE !' : 'DÉFAITE', `${S.score[0]} - ${S.score[1]}`, ...(NET.guest ? ['Quitter', quit] : ['Rejouer', again, 'Menu', quit]));
+  $('over').classList.add('podium'); ['hud', 'touch'].forEach(i => $(i).classList.add('hidden'));
 }
+function podiumView(dt) {
+  clockT += dt;
+  cars.filter(c => c.mesh.visible).forEach(c => { animCar(c, dt); c.tag.visible = true; });
+  if ((S.podT += dt) > 3) { S.podT = 0; EFX.fireworks(hypeTeam); hype = Math.max(hype, .7); }
+  animPads(clockT); animFx(dt, clockT);
+  const a = Math.sin(clockT * .25) * .6; camera.position.set(Math.sin(a) * 8.5, 2.8, Math.cos(a) * 8.5); camera.lookAt(0, 1.2, 0);
+  camera.fov = 50; camera.updateProjectionMatrix(); focusOn(new V3(0, 1.2, 0), .8, .28);
+}
+const focusOn = (p, k, dr = .1) => { const v = p.clone().project(camera); Object.assign(POST, { dof: k, dr, fx: (v.x + 1) / 2, fy: (v.y + 1) / 2, speed: 0, t: clockT }); }; // flou autour de p
 function menu() {
   Object.assign(S, { phase: 'menu', paused: false });
   ['over', 'hud', 'touch', 'online'].forEach(i => $(i).classList.add('hidden')); $('menu').classList.remove('hidden');
   document.body.classList.remove('playing');
-  cars.forEach(removeCar); cars = []; me = null; B.mesh.visible = false; showroom.visible = true; showPreview();
+  cars.forEach(removeCar); cars = []; me = null; B.mesh.visible = podium.visible = false; showroom.visible = true; showPreview();
+  if (THEME !== GAR.theme) applyTheme(GAR.theme); faceLogo(0);
 }
 const removeCar = c => scene.remove(c.mesh, c.tag, ...c.parts.extra);
 const quit = () => { if (NET.peer) netClose(); menu(); };
@@ -423,8 +439,8 @@ function updCam(dt) {
   const u = S.rt * 60 / Math.max(1, REPLAY.length);
   if (S.phase === 'intro') { // survol : on tourne autour du stade et on descend derrière sa voiture
     const e = 1 - (S.timer / 4.5) ** 3, end = c.p.clone().add(c.p.clone().sub(B.p).setY(0).normalize().multiplyScalar(3.6)).setY(c.p.y + 1.4);
-    const a = Math.atan2(end.x, end.z) + 2.4 * (1 - e), r = 85 + (Math.hypot(end.x, end.z) - 85) * e;
-    camP.set(Math.sin(a) * r, 40 + (end.y - 40) * e, Math.cos(a) * r); camL.set(0, 1, 0);
+    const a = Math.atan2(end.x, end.z) + 2.4 * (1 - e), r = 36 + (Math.hypot(end.x, end.z) - 36) * e; // reste dans le stade
+    camP.set(Math.sin(a) * r, 17 + (end.y - 17) * e, Math.cos(a) * r); camL.set(0, 1, 0);
   } else if (S.phase === 'replay') { // replay : derrière la balle, puis vue depuis le fond de la cage
     const bp = B.mesh.position;
     if (u < .55) camP.lerp(new V3(bp.x * .8, Math.max(bp.y, 1) + 3.5, bp.z - S.gs * 10), k * .5);
@@ -464,6 +480,8 @@ function animCar(c, dt) {
   if (on && c.ground && c.in.drift && c.v.length() > 5) FXN.emit(p.clone().addScaledVector(f, -.4).addScaledVector(upv(c), -.3), rdir(.8), { c: 0xd8d8e0, l: .8, s: .25, g: 1.4, a: .3 });
   c.tag.visible = on && c !== me; c.tag.position.copy(p).y += 1.25; // nom au-dessus de la voiture
   P.fm.uniforms.t.value = clockT; m.updateMatrixWorld();
+  const fv = c.v.dot(f), brake = (c.in.th < -.1 && fv > 1) || fv < -1; // feux stop (freinage ou marche arrière)
+  P.tailMat.color.set(0xff2030).multiplyScalar(brake ? 7 : 2);
   const h = p.y - REST; // ombre de contact sous la voiture
   P.blob.visible = on && h < 4; P.blob.position.set(p.x, .03, p.z); P.blob.rotation.y = Math.atan2(f.x, f.z); P.blob.material.opacity = .7 * (1 - h / 4);
   const right = new V3(1, 0, 0).applyQuaternion(m.quaternion); // traînées des feux arrière quand on va vite
@@ -502,6 +520,7 @@ function frame(dt) {
   }
   cars.forEach(c => animCar(c, dt));
   animPads(clockT); animFx(dt, clockT); updCam(dt); hud(dt);
+  TV.target.copy(B.mesh.position); if (S.phase === 'replay') focusOn(B.mesh.position, .45); else POST.dof = 0;
 }
 
 // Menu : la voiture du garage tourne sur son plateau
@@ -512,9 +531,10 @@ function showPreview() {
 function menuView(dt) {
   clockT += dt;
   const m = preview.mesh; m.quaternion.setFromAxisAngle(UP, clockT * .5); m.position.y = REST + .12;
-  animCar(preview, dt); preview.tag.visible = false; animPads(clockT); animFx(dt, clockT); POST.speed = 0; POST.t = clockT;
-  camera.fov = 50; camera.position.set(3, 1.35, 2.4); camera.lookAt(0, .4, 0); camera.updateProjectionMatrix();
+  animCar(preview, dt); preview.tag.visible = false; animPads(clockT); animFx(dt, clockT);
+  camera.fov = 50; camera.position.set(3, 1.35, 2.4); camera.lookAt(0, .4, 0);
   if (innerWidth >= 700) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * .2, 0, innerWidth, innerHeight); else camera.clearViewOffset();
+  camera.updateProjectionMatrix(); focusOn(new V3(0, .4, 0), .85); // garage : arrière-plan flou
 }
 
 function loop(now) {
@@ -522,7 +542,8 @@ function loop(now) {
   const dt = Math.min((now - last) / 1000, .1); last = now;
   pollPad();
   if (S.phase === 'menu') menuView(dt);
-  else if (!S.paused && S.phase !== 'end') {
+  else if (S.phase === 'end') podiumView(dt);
+  else if (!S.paused) {
     if (NET.guest) netGuestFrame(dt); // l'invité affiche ce que l'hôte simule
     else {
       acc += dt;
@@ -546,6 +567,11 @@ document.querySelectorAll('[data-m],[data-d]').forEach(b => b.onclick = () => {
   b.classList.toggle('on', GAR[key] === v);
   b.onclick = () => { GAR[key] = v; save(); $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); showPreview(); };
 }));
+Object.keys(THEMES).forEach(v => {
+  const b = $('themes').appendChild(document.createElement('button')); b.textContent = v; b.classList.toggle('on', GAR.theme === v);
+  b.onclick = () => { GAR.theme = v; save(); $('themes').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); applyTheme(v); };
+});
 $('play').onclick = () => start();
+applyTheme(GAR.theme);
 menu();
 addEventListener('DOMContentLoaded', () => requestAnimationFrame(loop));
