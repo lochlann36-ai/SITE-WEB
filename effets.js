@@ -11,7 +11,7 @@ function particles(n, add) {
     fragmentShader: 'uniform sampler2D map; varying vec4 vC; void main() { gl_FragColor = vC * texture2D(map, gl_PointCoord); }',
   });
   const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = add ? 3 : 2; pts.userData.noEnv = true; scene.add(pts);
-  const P = Array.from({ length: n }, () => ({ p: new V3(), v: new V3(), c: new C(), life: 0, max: 1 }));
+  const P = Array.from({ length: n }, () => ({ p: new V3(), v: new V3(), c: new C(), life: 0, max: 1, a: 0, s: 0, g: 0 }));
   let i = 0;
   return {
     mat,
@@ -46,31 +46,71 @@ const haze = HQ && (() => {
 })();
 
 // ----- Ondes de choc, flash lumineux, débris, fusées de feu d'artifice -----
-const waves = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.MeshBasicMaterial(additive({ side: THREE.DoubleSide }))); m.visible = false; m.userData.noEnv = true; scene.add(m); return { m, t: 1 }; });
+const SPH = new THREE.SphereGeometry(1, 32, 16), RING = new THREE.RingGeometry(.84, 1, 64).rotateX(-Math.PI / 2); // onde en bulle ou en anneau au sol
+const waves = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(SPH, new THREE.MeshBasicMaterial(additive())); m.visible = false; m.userData.noEnv = true; scene.add(m); return { m, t: 1 }; });
 const flash = new THREE.PointLight(0xffffff, 0, 70, 1.4); scene.add(flash);
 const debris = Array.from({ length: 30 }, () => { const m = new THREE.Mesh(new THREE.BoxGeometry(.2, .1, .26), new THREE.MeshStandardMaterial({ metalness: .6, roughness: .4 })); m.castShadow = true; m.visible = false; m.userData.noEnv = true; scene.add(m); return { m, v: new V3(), w: new V3(), t: 0 }; });
 const rockets = [];
 let wi = 0, di = 0, hype = 0, hypeTeam = 0;
 
-const EFX = {
-  wave(p, c, size, sp = 1.6) { const w = waves[wi = (wi + 1) % waves.length]; w.m.position.copy(p); w.m.material.color.set(c).multiplyScalar(2); Object.assign(w, { t: 0, size, sp }); w.m.visible = true; },
-  flash(p, c, k) { flash.position.copy(p).setY(Math.max(p.y, 2)); flash.color.set(c); flash.intensity = k; },
-  boom(p, team) { // explosion de but + feu d'artifice + stade aux couleurs de l'équipe
-    const c = COL[team];
+const bolts = [];
+function bolt(a, b, w = .14, life = .5, col = 0xbfd8ff) { // éclair : tube en zigzag
+  const d = b.clone().sub(a), n = 14, pts = [a.clone()];
+  for (let i = 1; i < n; i++) pts.push(a.clone().addScaledVector(d, i / n).add(rdir(d.length() * .045)));
+  pts.push(b.clone());
+  const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', .1), n * 3, w, 5), new THREE.MeshBasicMaterial({ color: new C(col).multiplyScalar(8), ...additive() }));
+  m.userData.noEnv = true; scene.add(m); bolts.push({ m, t: life });
+}
+function debrisBurst(p, cols, n, size = 1, glowCol = 0) { // morceaux qui volent et rebondissent
+  for (let i = 0; i < n; i++) {
+    const d = debris[di = (di + 1) % debris.length], mt = d.m.material;
+    d.m.position.copy(p); mt.color.set(cols[i % cols.length]); mt.emissive.set(i % 2 ? glowCol : 0); d.m.scale.setScalar(size * (.6 + Math.random() * .8)); d.m.visible = true;
+    d.v.copy(rdir(3 + Math.random() * 6)).y += 5; d.w.set(rnd(20), rnd(20), rnd(20)); d.t = 3;
+  }
+}
+// Explosions de but au choix (garage) : chacune a son style
+const BOOMS = {
+  Classique(p, c) {
     for (let i = 0; i < (HQ ? 320 : 120); i++) FXA.emit(p, rdir(5 + Math.random() * 30), { c: Math.random() < .2 ? 0xffffff : c, l: 1.8, s: .5, k: 3, gr: 5, d: 1.2 });
     for (let i = 0; i < (HQ ? 160 : 50); i++) FXN.emit(p, rdir(3 + Math.random() * 12).add(new V3(0, 8, 0)), { c: pick([c, 0xffffff, 0xffd400]), l: 4, s: .22, gr: 4, d: .8 });
     for (let i = 0; i < 40; i++) FXN.emit(p, rdir(5), { c: 0x6a6070, l: 2.5, s: 1.5, g: 7, a: .45 });
-    this.wave(p, c, 26); this.flash(p, c, 6000); this.fireworks(team);
-    Object.assign(POST, { flash: .45 }); hype = 1; hypeTeam = team;
+    EFX.wave(p, c, 26); return c;
+  },
+  Galaxie(p) { // spirale d'étoiles
+    for (let i = 0; i < (HQ ? 380 : 140); i++) {
+      const a = Math.random() * 6.28, r = 4 + Math.random() * 16, v = new V3(Math.cos(a), rnd(.4), Math.sin(a)).multiplyScalar(r);
+      FXA.emit(p, v.add(new V3(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(r * .9)), { c: pick([0x8a4dff, 0xff4de1, 0x4dc3ff, 0xffffff]), l: 2.4, s: .45, k: 3.5, d: 1.1 });
+    }
+    for (let i = 0; i < 90; i++) FXA.emit(p.clone().add(rdir(7)), rdir(.4), { c: 0xffffff, l: 3, s: .22, k: 7, d: .3 });
+    EFX.wave(p, 0xb45dff, 22); EFX.wave(p, 0x4dc3ff, 30, .9, true); return 0xa060ff;
+  },
+  Volcan(p) { // fontaine de lave, roches brûlantes, colonne de fumée
+    for (let i = 0; i < (HQ ? 300 : 110); i++) FXA.emit(p, new V3(rnd(8), 10 + Math.random() * 22, rnd(8)), { c: pick([0xff3a00, 0xff8a10, 0xffd040]), l: 2.2, s: .6, k: 3.5, gr: 14, d: .4 });
+    for (let i = 0; i < 70; i++) FXN.emit(p, new V3(rnd(4), 6 + Math.random() * 8, rnd(4)), { c: 0x2a2026, l: 4, s: 2, g: 9, a: .55, d: .6 });
+    debrisBurst(p, [0x2b1a12, 0x3a2416], 16, 1.6, 0xff4a00); EFX.wave(p, 0xff5a10, 14, 1.2, true); return 0xff5a10;
+  },
+  Glace(p) { // éclats de glace, neige, onde de givre au sol
+    for (let i = 0; i < (HQ ? 240 : 90); i++) FXA.emit(p, rdir(6 + Math.random() * 20), { c: pick([0x9ff0ff, 0xffffff, 0x5fc8ff]), l: 1.6, s: .35, k: 3, gr: 3 });
+    for (let i = 0; i < (HQ ? 220 : 80); i++) FXN.emit(p.clone().add(new V3(rnd(30), 6 + Math.random() * 10, rnd(20))), new V3(rnd(1), -1.5, rnd(1)), { c: 0xffffff, l: 5, s: .18, d: .2 });
+    debrisBurst(p, [0xcff6ff, 0x8fe0ff], 14, 1, 0x2a6a8a); EFX.wave(p, 0x8fe8ff, 24, 1, true); EFX.wave(p, 0xdff8ff, 12); return 0x8fe8ff;
+  },
+  Foudre(p) { // éclairs qui tombent du ciel sur la cage
+    for (let i = 0; i < 6; i++) bolt(new V3(p.x + rnd(40), 70, p.z + rnd(24)), new V3(p.x + rnd(8), Math.max(0, p.y + rnd(3)), p.z + rnd(4)), .14, .55);
+    for (let i = 0; i < (HQ ? 260 : 100); i++) FXA.emit(p, rdir(4 + Math.random() * 18), { c: pick([0xffffff, 0x9fd8ff, 0x6fa8ff]), l: .7, s: .18, k: 5, gr: 4 });
+    EFX.wave(p, 0x9fd8ff, 20, 2.2); snd(55, 1.8, 'sawtooth', .2, 28); return 0xbfd8ff;
+  },
+};
+const EFX = {
+  wave(p, c, size, sp = 1.6, flat = false) { const w = waves[wi = (wi + 1) % waves.length]; w.m.position.copy(p).y = flat ? .1 : p.y; w.m.geometry = flat ? RING : SPH; w.m.material.color.set(c).multiplyScalar(2); Object.assign(w, { t: 0, size, sp }); w.m.visible = true; },
+  flash(p, c, k) { flash.position.copy(p).setY(Math.max(p.y, 2)); flash.color.set(c); flash.intensity = k; },
+  boom(p, team, kind) { // explosion de but (au choix du buteur) + feu d'artifice + stade aux couleurs de l'équipe
+    const c = BOOMS[Object.hasOwn(BOOMS, kind) ? kind : 'Classique'](p, COL[team]);
+    this.flash(p, c, 6000); this.fireworks(team); POST.flash = .45; hype = 1; hypeTeam = team;
   },
   explode(p, team = 0) { // démolition : boule de feu, fumée, morceaux de carrosserie
     for (let i = 0; i < 120; i++) FXA.emit(p, rdir(3 + Math.random() * 14), { c: pick([0xff6a10, 0xffb030, 0xffffff]), l: .9, s: .45, k: 3, gr: 3 });
     for (let i = 0; i < 30; i++) FXN.emit(p, rdir(3), { c: 0x2a2a30, l: 2, s: 1, g: 4, a: .7 });
-    for (let i = 0; i < 10; i++) {
-      const d = debris[di = (di + 1) % debris.length];
-      d.m.position.copy(p); d.m.material.color.set(i % 3 ? COL[team] : 0x22252c); d.m.scale.setScalar(.6 + Math.random() * .8); d.m.visible = true;
-      d.v.copy(rdir(3 + Math.random() * 6)).y += 5; d.w.set(rnd(20), rnd(20), rnd(20)); d.t = 3;
-    }
+    debrisBurst(p, [COL[team], COL[team], 0x22252c], 10);
     this.wave(p, 0xff8a30, 7); this.flash(p, 0xff8a30, 2500);
   },
   spark(p, s) {
@@ -85,6 +125,23 @@ const EFX = {
     }
   },
 };
+
+// ----- Pluie (traits animés sur la carte graphique, autour de la caméra) -----
+const rain = (() => {
+  const n = HQ ? 5000 : 1200, pos = new Float32Array(n * 6), end = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) { const x = rnd(60), y = Math.random() * 30, z = rnd(60); pos.set([x, y, z, x, y, z], i * 6); end[i * 2 + 1] = 1; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('end', new THREE.BufferAttribute(end, 1));
+  const m = new THREE.ShaderMaterial({
+    uniforms: { t: { value: 0 }, cam: { value: new V3() }, k: { value: .35 } }, ...additive(),
+    vertexShader: `attribute float end; uniform float t; uniform vec3 cam; varying float vE;
+      void main() { vec3 p = position; p.y = mod(p.y - t * 24., 30.); p.xz = mod(p.xz - cam.xz + 30., 60.) + cam.xz - 30.;
+        p += vec3(.12, .9, .05) * end; vE = end; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.); }`,
+    fragmentShader: 'uniform float k; varying float vE; void main() { gl_FragColor = vec4(vec3(.65, .75, 1.) * k * (1. - vE * .8), 1.); }',
+  });
+  const l = new THREE.LineSegments(g, m); l.frustumCulled = false; l.visible = false; l.userData.noEnv = true; scene.add(l);
+  return { l, m };
+})();
+let thunderT = 4;
 
 // ----- Traînées des feux arrière (rubans lumineux) -----
 function ribbon(color, n = 22) {
@@ -126,7 +183,27 @@ function animFx(dt, t) {
   FXA.update(dt); FXN.update(dt);
   if (haze) { haze.uniforms.t.value = t; haze.uniforms.k.value = LOOK.haze; }
   CROWD.t.value = BANNER.t.value = t; CROWD.hype.value = hype; // public qui saute, bannières qui flottent
-  waves.forEach(w => { if (!w.m.visible) return; w.t += dt * w.sp; w.m.scale.setScalar(.5 + w.size * (1 - (1 - Math.min(w.t, 1)) ** 3)); w.m.material.opacity = .5 * (1 - w.t); w.m.visible = w.t < 1; });
+  waves.forEach(w => {
+    if (!w.m.visible) return; w.t += dt * w.sp; w.m.scale.setScalar(.5 + w.size * (1 - (1 - Math.min(w.t, 1)) ** 3));
+    w.m.material.opacity = .5 * (1 - w.t); w.m.visible = w.t < 1;
+  });
+  for (let i = bolts.length - 1; i >= 0; i--) { const b = bolts[i]; b.m.visible = Math.random() > .25; if ((b.t -= dt) < 0) { scene.remove(b.m); b.m.geometry.dispose(); bolts.splice(i, 1); } } // éclairs qui grésillent
+  // Pluie : gouttes, éclaboussures au sol, éclairs au loin et tonnerre
+  rain.l.visible = LOOK.rain > 0;
+  if (LOOK.rain) {
+    rain.m.uniforms.t.value = t; rain.m.uniforms.cam.value.copy(camera.position);
+    for (let n = (HQ ? 40 : 12) * dt * 60; n > Math.random(); n--) {
+      const q = camera.position.clone().add(new V3(rnd(36), 0, rnd(36))).setY(.05);
+      if (Math.abs(q.x) < W && Math.abs(q.z) < L) FXA.emit(q, new V3(rnd(1), 1.5 + Math.random(), rnd(1)), { c: 0xbfd8ff, l: .22, s: .1, k: 1.6, gr: 9 });
+    }
+    if ((thunderT -= dt) < 0) {
+      thunderT = 6 + Math.random() * 10; LOOK.light = 1;
+      const a = Math.random() * 6.28, r = 160 + Math.random() * 90; bolt(new V3(Math.cos(a) * r, 170, Math.sin(a) * r), new V3(Math.cos(a) * r * .9, 40, Math.sin(a) * r * .9), 1.2, .45);
+      setTimeout(() => snd(45 + Math.random() * 20, 2.5, 'sawtooth', .18, 25), 400 + Math.random() * 900);
+    }
+  }
+  LOOK.light = Math.max(0, LOOK.light - dt * 2.5); const lf = LOOK.light * (Math.random() > .3 ? 1 : .3); // éclair qui vacille
+  skyMat.uniforms.flash.value = lf * 1.5; hemi.intensity = LOOK.hemi + lf * .8; POST.flash = Math.max(POST.flash, lf * .03);
   flash.intensity *= Math.exp(-5 * dt); POST.flash *= Math.exp(-4 * dt);
   debris.forEach(d => {
     if (!d.m.visible) return;

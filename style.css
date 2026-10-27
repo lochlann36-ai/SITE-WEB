@@ -40,6 +40,9 @@ canvas { display: block; position: fixed; inset: 0; }
 #msg small { display: inline-block; margin-top: 10px; padding: 4px 18px; font: 800 italic 22px var(--ui); letter-spacing: 5px; background: linear-gradient(90deg, transparent, #000a, transparent); }
 #msg small:empty { display: none; }
 
+#toast { position: absolute; bottom: 20%; width: 100%; text-align: center; font: 26px var(--display); font-style: italic; letter-spacing: 2px; color: var(--gold); text-shadow: 0 0 16px #ffb400aa, 0 3px 8px #000c; opacity: 0; }
+#toast.show { animation: toast 1.6s ease-out both; }
+@keyframes toast { from { opacity: 0; transform: translateY(16px) scale(1.4); } 12%, 70% { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-14px); } }
 #cam { position: absolute; right: 30px; bottom: 178px; width: 130px; text-align: center; font: 800 12px var(--ui); letter-spacing: 2px; opacity: .3; }
 #cam.on { opacity: 1; text-shadow: 0 0 10px var(--blue); }
 #boost { position: absolute; right: 28px; bottom: 28px; width: 140px; height: 140px; display: grid; place-items: center; filter: drop-shadow(0 6px 16px #000b); }
@@ -109,6 +112,10 @@ kbd { font: 700 12px var(--ui); padding: 1px 7px; border: 1px solid #ffffff40; b
 #over .panel { min-width: min(420px, 100%); }
 #over.podium { justify-content: flex-end; background: linear-gradient(transparent 50%, #05070fcc); } /* fin de match : le podium reste visible */
 #over.podium .panel { margin-block: 0 4vh; padding: 16px 28px; gap: 8px; } #over.podium h1 { font-size: clamp(34px, 5vw, 56px); }
+#stats { border-collapse: collapse; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; } #stats:empty { display: none; }
+#stats th { padding: 0 10px 4px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; opacity: .55; }
+#stats td { padding: 3px 10px; } #stats td:first-child { text-align: left; border-left: 4px solid var(--blue); } #stats .orange td:first-child { border-color: var(--orange); }
+#stats .me td { background: #ffffff14; } #stats td:nth-child(2) { color: var(--gold); }
 #err { position: fixed; left: 12px; bottom: 12px; z-index: 10; max-width: min(560px, calc(100% - 24px)); padding: 10px 14px; border-radius: 8px; background: #b3261ee6; font-size: 14px; user-select: text; }
 
 /* Grand écran : menu à gauche, voiture du garage à droite */
@@ -119,10 +126,12 @@ kbd { font: 700 12px var(--ui); padding: 1px 7px; border: 1px solid #ffffff40; b
   #menu .sub, .keys { text-align: left; }
 }
 @media (max-height: 520px) {
-  h1 { font-size: 32px; } h2 { font-size: 24px; } .sub { display: none; }
-  .panel { gap: 7px; padding: 14px 18px; } .row { gap: 6px; } .lbl { width: 60px; font-size: 11px; }
-  button { padding: 5px 12px; font-size: 13px; } .swatch { width: 26px; height: 26px; }
-  .big { font-size: 17px; padding: 9px 26px; } input { padding: 5px 10px; }
+  h1 { font-size: 28px; } h2 { font-size: 24px; } .sub { display: none; }
+  .panel { gap: 5px; padding: 10px 16px; } .row { gap: 6px; } .lbl { width: 60px; font-size: 11px; }
+  button { padding: 4px 11px; font-size: 13px; } .swatch { width: 24px; height: 24px; }
+  .big { font-size: 17px; padding: 7px 24px; } input { padding: 5px 10px; }
+  #over.podium .panel { display: grid; grid-template-columns: auto auto; gap: 6px 22px; align-items: center; } #over.podium #stats { grid-column: 2; grid-row: 1 / 4; } /* stats à côté : le podium reste visible */
   #score .team { font-size: 26px; min-width: 90px; padding: 4px 14px; } #time { font-size: 20px; min-width: 90px; }
+  #stats { font-size: 11px; } #stats td { padding: 1px 8px; } #toast { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { #speed, .big::after, #replay b, #boost.full #ring { animation: none; } }

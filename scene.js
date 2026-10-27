@@ -23,8 +23,9 @@ const QUALITY = { auto: true, pr: Math.min(devicePixelRatio, HQ ? 2 : 1.5) }; //
 
 // Post-traitement en HDR : halo lumineux (bloom), reflets étirés, étalonnage, aberration chromatique, flou de vitesse, grain
 const POST = { speed: 0, flash: 0, t: 0, dof: 0, fx: .5, fy: .5, dr: .1 }; // réglés par le jeu (dof = flou au-delà du rayon dr autour du point fx, fy)
+const RT_TYPE = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float') ? THREE.HalfFloatType : THREE.UnsignedByteType; // rendu HDR si possible
 const post = HQ && (() => {
-  const ext = renderer.extensions, type = ext.has('EXT_color_buffer_float') || ext.has('EXT_color_buffer_half_float') ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  const type = RT_TYPE;
   const rt = (samples = 0) => new THREE.WebGLRenderTarget(1, 1, { type, samples });
   const main = rt(4), mips = [rt(), rt(), rt(), rt(), rt()], sA = rt(), sB = rt(), dA = rt(), dB = rt();
   const dirt = canvasTex(512, 256, x => { // poussière et traces sur l'objectif, révélées par les lumières fortes
@@ -42,14 +43,22 @@ const post = HQ && (() => {
   const up = sh('void main() { gl_FragColor = vec4((T(vec2(-2, 0)) + T(vec2(2, 0)) + T(vec2(0, -2)) + T(vec2(0, 2)) + (T(vec2(-1, 1)) + T(vec2(1)) + T(vec2(1, -1)) + T(vec2(-1))) * 2.) / 12., 1.); }',
     {}, { blending: THREE.AdditiveBlending });
   const streak = sh('uniform float st; void main() { vec3 s = vec3(0.); for (int i = -4; i <= 4; i++) s += T(vec2(float(i) * st, 0.)) * (1. - abs(float(i)) / 5.); gl_FragColor = vec4(s / 5., 1.); }', { st: { value: 1 } });
-  const final = sh(`uniform sampler2D bloom, streaks, blur, dirt; uniform float str, speed, flash, time, dof, aspect, dr; uniform vec2 focus;
+  const drops = canvasTex(256, 256, x => { // gouttes d'eau sur l'objectif (relief en niveaux de gris)
+    x.fillStyle = '#000'; x.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 26; i++) { const r = 3 + Math.random() * 8, px = Math.random() * 256, py = Math.random() * 256, g = x.createRadialGradient(px, py, 0, px, py, r);
+      [[0, '#fff'], [.5, '#ddd'], [.8, '#999'], [1, '#000']].forEach(s => g.addColorStop(...s)); x.fillStyle = g; x.beginPath(); x.ellipse(px, py, r, r * (1 + Math.random() * .5), 0, 0, 7); x.fill(); } // gouttes bombées
+  }, false);
+  const final = sh(`uniform sampler2D bloom, streaks, blur, dirt, drops; uniform float str, speed, flash, time, dof, aspect, dr, rain; uniform vec2 focus;
     void main() {
-      vec2 d = vUv - .5; float r = length(d);
+      vec2 uv = vUv;
+      if (rain > 0.) { vec2 p = vUv * vec2(aspect, 1.) * .9 + vec2(0., time * .01), e = vec2(.004, 0.); // gouttes : l'image est déviée par leur relief
+        uv -= vec2(texture2D(drops, p + e).r - texture2D(drops, p - e).r, texture2D(drops, p + e.yx).r - texture2D(drops, p - e.yx).r) * .05 * rain; }
+      vec2 d = uv - .5; float r = length(d);
       vec2 ca = d * (.003 + speed * .008);                                   // aberration chromatique
-      vec3 c = vec3(texture2D(tex, vUv + ca).r, texture2D(tex, vUv).g, texture2D(tex, vUv - ca).b);
+      vec3 c = vec3(texture2D(tex, uv + ca).r, texture2D(tex, uv).g, texture2D(tex, uv - ca).b);
       if (dof > 0.) c = mix(c, texture2D(blur, vUv).rgb, dof * smoothstep(dr, dr + .3, length((vUv - focus) * vec2(aspect, 1.)))); // flou d'arrière-plan
       if (speed > .01) {                                                     // flou radial en supersonique
-        vec3 b = vec3(0.); for (int i = 1; i <= 6; i++) b += texture2D(tex, vUv - d * float(i) * .014 * speed).rgb;
+        vec3 b = vec3(0.); for (int i = 1; i <= 6; i++) b += texture2D(tex, uv - d * float(i) * .014 * speed).rgb;
         c = mix(c, b / 6., smoothstep(.12, .55, r) * speed);
       }
       vec3 bl = texture2D(bloom, vUv).rgb;
@@ -60,7 +69,7 @@ const post = HQ && (() => {
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
       gl_FragColor.rgb += (fract(sin(dot(vUv * 1000. + time, vec2(12.9898, 78.233))) * 43758.5) - .5) * .03; // grain
-    }`, { bloom: { value: null }, streaks: { value: null }, blur: { value: null }, dirt: { value: dirt }, str: { value: .55 }, speed: { value: 0 }, flash: { value: 0 }, time: { value: 0 }, dof: { value: 0 }, dr: { value: .1 }, aspect: { value: 1 }, focus: { value: new THREE.Vector2(.5, .5) } });
+    }`, { bloom: { value: null }, streaks: { value: null }, blur: { value: null }, dirt: { value: dirt }, drops: { value: drops }, rain: { value: 0 }, str: { value: .55 }, speed: { value: 0 }, flash: { value: 0 }, time: { value: 0 }, dof: { value: 0 }, dr: { value: .1 }, aspect: { value: 1 }, focus: { value: new THREE.Vector2(.5, .5) } });
   const pass = (m, src, dst) => {
     quad.material = m; m.uniforms.tex.value = src.texture; m.uniforms.px.value.set(1 / src.width, 1 / src.height);
     renderer.setRenderTarget(dst); renderer.autoClear = m !== up; renderer.render(quad, cam);
@@ -80,7 +89,7 @@ const post = HQ && (() => {
       [[mips[1], sA, 1], [sA, sB, 4], [sB, sA, 12]].forEach(([a, b, st]) => { streak.uniforms.st.value = st; pass(streak, a, b); }); // reflets étirés façon objectif
       if (POST.dof > 0) { pass(down, main, dA); pass(down, dA, dB); }
       const u = final.uniforms; u.bloom.value = mips[0].texture; u.streaks.value = sA.texture; u.blur.value = dB.texture; u.speed.value = POST.speed; u.flash.value = POST.flash; u.time.value = POST.t;
-      u.dof.value = POST.dof; u.dr.value = POST.dr; u.focus.value.set(POST.fx, POST.fy);
+      u.dof.value = POST.dof; u.dr.value = POST.dr; u.focus.value.set(POST.fx, POST.fy); u.rain.value = LOOK.rain;
       pass(final, main, null); renderer.autoClear = true;
     },
   };
@@ -90,6 +99,19 @@ function resize() {
   renderer.setPixelRatio(QUALITY.pr); renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   const s = renderer.getDrawingBufferSize(new THREE.Vector2()); if (post) post.size(s.x, s.y);
+  if (MIRROR) MIRROR.rt.setSize(s.x >> 1, s.y >> 1);
+}
+const WET = { value: 0 }, MIRROR = HQ && { rt: new THREE.WebGLRenderTarget(1, 1, { type: RT_TYPE }), cam: new THREE.PerspectiveCamera(), M: new THREE.Matrix4() };
+const BIAS = new THREE.Matrix4().set(.5, 0, 0, .5, 0, .5, 0, .5, 0, 0, .5, .5, 0, 0, 0, 1);
+function renderMirror() { // la scène vue depuis sous le sol, pour les reflets de la pelouse mouillée
+  if (!MIRROR || !WET.value) return;
+  const m = MIRROR.cam, c = camera, flip = v => v.setY(-v.y);
+  m.copy(c); m.position.copy(flip(c.position.clone()));
+  m.up.copy(flip(new V3(0, 1, 0).applyQuaternion(c.quaternion))); m.lookAt(flip(new V3(0, 0, -1).applyQuaternion(c.quaternion).add(c.position)));
+  m.updateMatrixWorld(); MIRROR.M.copy(BIAS).multiply(m.projectionMatrix).multiply(m.matrixWorldInverse);
+  floor.visible = outside.visible = false; renderer.shadowMap.autoUpdate = false;
+  renderer.setRenderTarget(MIRROR.rt); renderer.render(scene, m); renderer.setRenderTarget(null);
+  renderer.shadowMap.autoUpdate = true; floor.visible = outside.visible = true;
 }
 addEventListener('resize', resize); resize();
 let ft = 1 / 60, fn = 0;
@@ -102,7 +124,7 @@ function render(dt) {
   sky.position.copy(camera.position);
   const ps = renderer.getDrawingBufferSize(new THREE.Vector2()).y / (2 * Math.tan(camera.fov * Math.PI / 360));
   FXA.mat.uniforms.ps.value = FXN.mat.uniforms.ps.value = ps;
-  renderTV();
+  renderMirror(); renderTV();
   if (post) post.render(); else renderer.render(scene, camera);
 }
 
@@ -126,9 +148,9 @@ const additive = (o = {}) => ({ transparent: true, blending: THREE.AdditiveBlend
 const v3u = (x, y, z) => ({ value: new V3(x, y, z) });
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false,
-  uniforms: { c0: v3u(.9, .25, .07), c1: v3u(.07, .03, .17), c2: v3u(.004, .007, .035), sun: { value: SUN.clone() }, sunCol: v3u(1, .42, .14), sunK: { value: 40 }, halo: { value: .55 }, stars: { value: 2 }, clouds: { value: 0 }, t: { value: 0 } },
+  uniforms: { c0: v3u(.9, .25, .07), c1: v3u(.07, .03, .17), c2: v3u(.004, .007, .035), sun: { value: SUN.clone() }, sunCol: v3u(1, .42, .14), sunK: { value: 40 }, halo: { value: .55 }, stars: { value: 2 }, clouds: { value: 0 }, cloudCol: v3u(1, 1, 1), flash: { value: 0 }, t: { value: 0 } },
   vertexShader: 'varying vec3 vD; void main() { vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
-  fragmentShader: `uniform vec3 c0, c1, c2, sun, sunCol; uniform float sunK, halo, stars, clouds, t; varying vec3 vD;
+  fragmentShader: `uniform vec3 c0, c1, c2, sun, sunCol, cloudCol; uniform float sunK, halo, stars, clouds, flash, t; varying vec3 vD;
     float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5); }
     float n(vec2 p) { vec2 i = floor(p), f = fract(p); f *= f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + 1.), f.x), f.y); }
     void main() {
@@ -141,8 +163,9 @@ const skyMat = new THREE.ShaderMaterial({
       if (clouds > 0.) { // nuages : bruit fractal projeté sur le ciel
         vec2 q = vD.xz / max(y, .06) * .5 + t * .01; float f = 0., a = .5;
         for (int i = 0; i < 5; i++) { f += a * n(q); q *= 2.1; a *= .5; }
-        c = mix(c, vec3(1.) * (.85 + .5 * s), smoothstep(.45, .75, f) * smoothstep(.02, .25, y) * clouds * .9);
+        c = mix(c, cloudCol * (.85 + .5 * s) + flash * vec3(.6, .65, .85), smoothstep(.75 - clouds * .3, 1.05 - clouds * .3, f) * smoothstep(.02, .25, y) * min(1., clouds * .9));
       }
+      c += flash * vec3(.12, .13, .18);                                       // éclair
       gl_FragColor = vec4(c, 1.);
     }`,
 });
@@ -185,6 +208,18 @@ const floorG = new THREE.ShapeGeometry(new THREE.Shape(OCT.map(([x, z]) => new T
 const floor = new THREE.Mesh(floorG.rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({
   map: fieldTex, emissive: 0xffffff, emissiveMap: lineTex, emissiveIntensity: .45, bumpMap: grass, bumpScale: 1.2, roughness: .82, envMapIntensity: .35,
 }));
+floor.material.onBeforeCompile = sh => {
+  if (!MIRROR) return;
+  Object.assign(sh.uniforms, { reflTex: { value: MIRROR.rt.texture }, reflM: { value: MIRROR.M }, wet: WET, rt: CROWD.t });
+  sh.vertexShader = 'varying vec3 vWP;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n vWP = (modelMatrix * vec4(transformed, 1.)).xyz;');
+  sh.fragmentShader = 'uniform sampler2D reflTex; uniform mat4 reflM; uniform float wet, rt; varying vec3 vWP;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+    if (wet > 0.) { // reflets du stade, troublés par les gouttes
+      vec2 rip = vec2(sin(vWP.x * 7. + rt * 9.) + sin(vWP.z * 5.3 - rt * 7.), cos(vWP.z * 6.1 + rt * 8.) + cos(vWP.x * 4.7 + rt * 6.)) * .003;
+      vec4 rp = reflM * vec4(vWP, 1.);
+      totalEmissiveRadiance += texture2D(reflTex, rp.xy / rp.w + rip).rgb * wet;
+      diffuseColor.rgb *= 1. - .4 * wet;
+    }`);
+};
 const outside = new THREE.Mesh(new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: .9 }));
 floor.receiveShadow = outside.receiveShadow = true; outside.position.y = -.05;
 scene.add(floor, outside);
@@ -370,7 +405,9 @@ function animPads(t) {
   });
 }
 
-// ===== Balle : métal alvéolé, coutures lumineuses =====
+// ===== Balle : métal alvéolé, coutures lumineuses ; anneau au sol quand elle est en l'air =====
+const ballRing = new THREE.Mesh(new THREE.RingGeometry(.9, 1.04, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new C(.6, .85, 1).multiplyScalar(2), ...additive() }));
+ballRing.position.y = .03; ballRing.visible = false; ballRing.userData.noEnv = true; scene.add(ballRing);
 function makeBall() {
   const tex = canvasTex(1024, 512, x => {
     x.fillStyle = '#cfd4dc'; x.fillRect(0, 0, 1024, 512); x.strokeStyle = '#59606e'; x.lineWidth = 6; x.fillStyle = '#b9bfca';
@@ -475,10 +512,10 @@ function buildCar(r) {
   root.userData.noEnv = blob.userData.noEnv = true;
   return { root, body, wheels, flame, fm, blob, tails, tailMat, wr: M.wr, extra: [blob, ...tails.map(t => t.rb.m)] };
 }
-function makeTag(name, team) { // nom au-dessus des voitures
+function makeTag(name, team, bg) { // nom au-dessus des voitures
   const t = canvasTex(256, 64, x => {
     x.font = 'italic 34px "Russo One", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const w = Math.min(250, x.measureText(name).width + 30); x.fillStyle = team ? '#ff7a1acc' : '#1e7bffcc';
+    const w = Math.min(250, x.measureText(name).width + 30); x.fillStyle = bg || (team ? '#ff7a1acc' : '#1e7bffcc');
     x.beginPath(); (x.roundRect || x.rect).call(x, 128 - w / 2, 8, w, 48, 12); x.fill(); x.fillStyle = '#fff'; x.fillText(name, 128, 34);
   });
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, sizeAttenuation: false, depthTest: false, transparent: true }));
@@ -510,7 +547,7 @@ podium.visible = false; podium.userData.noEnv = true; scene.add(podium);
 const showPodium = team => { podGlow.color.set(COL[team]).multiplyScalar(3); podium.visible = true; };
 
 // ===== Ambiances du stade + reflets du vrai stade sur les carrosseries =====
-const LOOK = { roof: roofLight.color.clone(), led: ledMat.color.clone(), shaft: new C(1, .9, .75), ring: ringMat.color.clone(), haze: 1 };
+const LOOK = { roof: roofLight.color.clone(), led: ledMat.color.clone(), shaft: new C(1, .9, .75), ring: ringMat.color.clone(), haze: 1, rain: 0, hemi: .9, light: 0 };
 const THEMES = {
   'Coucher de soleil': { c: [[.9, .25, .07], [.07, .03, .17], [.004, .007, .035]], sun: [-.55, .1, -.83], sunCol: [1, .42, .14], sunK: 40, halo: .55, stars: 2, clouds: 0,
     fog: [0x2b2140, .0028], hemi: [0x8ea6ff, 0x24401c, .9], key: [0xfff1dd, 2.4], rim: [0xff8a50, .8], exp: 1, roof: 3, wall: .22, crowd: 0x8a90a8, shaft: [[1, .9, .75], .09], haze: 1, bloom: .55, ring: 2.2 },
@@ -518,6 +555,8 @@ const THEMES = {
     fog: [0x120828, .004], hemi: [0x4038d0, 0x0a1024, .32], key: [0xb8c8ff, 1.15], rim: [0xff3cc0, 1.1], exp: .95, roof: 3.5, roofCol: 0xbcd0ff, wall: .6, crowd: 0x707596, shaft: [[.55, .7, 1], .17], haze: 1.6, bloom: .8, ring: 3.5 },
   'Plein jour': { c: [[.72, .84, .95], [.3, .52, .9], [.1, .25, .65]], sun: [.35, .78, .3], sunCol: [1, .95, .85], sunK: 30, halo: .35, stars: 0, clouds: 1,
     fog: [0xa8c8ea, .0016], hemi: [0xd6e8ff, 0x3a5a2a, 1.7], key: [0xfff6e8, 3.4], rim: [0xffffff, .5], exp: .82, roof: 1.2, wall: .1, crowd: 0xcdd1dc, shaft: [[1, 1, 1], 0], haze: 0, bloom: .32, ring: 1 },
+  'Pluie de nuit': { c: [[.06, .07, .1], [.03, .035, .05], [.012, .014, .02]], sun: [.2, .8, .3], sunCol: [.5, .6, .8], sunK: 0, halo: .04, stars: 0, clouds: 1.6, cloudCol: [.05, .055, .07],
+    fog: [0x0b0f16, .0055], hemi: [0x4a5a80, 0x0c1014, .4], key: [0xb0c4ff, 1.2], rim: [0x6080ff, .6], exp: 1, roof: 4, roofCol: 0xd8e4ff, wall: .45, crowd: 0x5a6078, shaft: [[.7, .8, 1], .24], haze: 2.4, bloom: .85, ring: 2.5, rain: 1 },
 };
 const pmrem = new THREE.PMREMGenerator(renderer);
 let THEME = 'Coucher de soleil', envRT = null;
@@ -532,6 +571,7 @@ function applyTheme(name) {
   const T = THEMES[THEME], u = skyMat.uniforms;
   ['c0', 'c1', 'c2'].forEach((k, i) => u[k].value.set(...T.c[i]));
   u.sun.value.set(...T.sun).normalize(); u.sunCol.value.set(...T.sunCol); u.sunK.value = T.sunK; u.halo.value = T.halo; u.stars.value = T.stars; u.clouds.value = T.clouds;
+  u.cloudCol.value.set(...(T.cloudCol || [1, 1, 1])); LOOK.rain = T.rain || 0; LOOK.hemi = T.hemi[2]; WET.value = LOOK.rain * .6;
   scene.fog.color.set(T.fog[0]); scene.fog.density = T.fog[1];
   hemi.color.set(T.hemi[0]); hemi.groundColor.set(T.hemi[1]); hemi.intensity = T.hemi[2];
   sun.color.set(T.key[0]); sun.intensity = T.key[1]; rim.color.set(T.rim[0]); rim.intensity = T.rim[1]; rim.position.copy(u.sun.value).multiplyScalar(100);

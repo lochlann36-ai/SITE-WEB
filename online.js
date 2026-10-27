@@ -4,7 +4,7 @@ const PREFIX = 'rocketball-v1-', ERRORS = {
   'peer-unavailable': 'Code introuvable', 'unavailable-id': 'Code déjà pris, réessaie', network: 'Pas de connexion au serveur de jeu (ouvre le jeu depuis le site)',
   'server-error': 'Serveur indisponible', 'browser-incompatible': 'Jeu en ligne bloqué ici : ouvre le jeu depuis le site',
 };
-let lobby = [], snapT = 0, sendT = 0; // lobby : invités de l'hôte { conn, name, model, accent, trail }
+let lobby = [], snapT = 0, sendT = 0; // lobby : invités de l'hôte { conn, name, model, accent, trail, boom }
 
 const netMsg = t => $('netmsg').textContent = t;
 function newPeer(id) {
@@ -45,7 +45,7 @@ function hostData(conn, d) {
   if (d.t === 'in') { const c = cars.find(c => c.conn === conn); if (c && !c.bot) Object.assign(c.in, d.i); }
   else if (d.t === 'hello' && !lobby.some(p => p.conn === conn)) {
     if (lobby.length >= 5 || S.phase !== 'menu') return conn.send({ t: 'full' });
-    lobby.push({ conn, name: String(d.name || 'Invité').slice(0, 12), model: d.model, accent: d.accent, trail: d.trail });
+    lobby.push({ conn, name: String(d.name || 'Invité').slice(0, 12), model: d.model, accent: d.accent, trail: d.trail, boom: d.boom });
     hostLobby();
   }
 }
@@ -68,7 +68,7 @@ function hostStart() { // équipes alternées, places libres complétées par de
 const r2 = x => Math.round(x * 100) / 100;
 function sendSnap() {
   const d = {
-    t: 's', ph: S.phase, sc: S.score, tm: r2(S.time), tr: r2(S.timer), ot: S.ot, bv: +B.mesh.visible, pd: pads.map(p => +(p.t > 0)).join(''), ev: NET.ev.splice(0),
+    t: 's', ph: S.phase, sc: S.score, tm: r2(S.time), tr: r2(S.timer), ot: S.ot, bv: +B.mesh.visible, pd: pads.map(p => +(p.t > 0)).join(''), ev: NET.ev.splice(0), st: cars.map(c => c.st),
     b: [...B.p.toArray(), ...B.v.toArray()].map(r2),
     c: cars.map(c => [...c.p.toArray(), ...c.q.toArray(), ...c.v.toArray()].map(r2).concat(Math.round(c.boost), (c.dead > 0) | c.boosting << 1 | c.ground << 2)),
   };
@@ -86,7 +86,7 @@ function joinGame(code) {
   Object.assign(NET, { host: false, guest: true });
   peer.on('open', () => {
     const conn = NET.conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
-    conn.on('open', () => conn.send({ t: 'hello', name: GAR.name, model: GAR.model, accent: GAR.accent, trail: GAR.trail }));
+    conn.on('open', () => conn.send({ t: 'hello', name: GAR.name, model: GAR.model, accent: GAR.accent, trail: GAR.trail, boom: GAR.boom }));
     conn.on('data', guestData);
     conn.on('close', () => {
       if (!NET.guest) return;
@@ -106,10 +106,10 @@ function applySnap(d) {
   NET.snap = d; NET.age = 0;
   d.c.forEach((a, i) => { const c = cars[i]; if (c) Object.assign(c, { boost: a[10], dead: a[11] & 1, boosting: !!(a[11] & 2), ground: !!(a[11] & 4) }).v.fromArray(a, 7); });
   B.v.fromArray(d.b, 3); B.mesh.visible = !!d.bv;
-  pads.forEach((p, i) => p.t = +d.pd[i]);
+  pads.forEach((p, i) => p.t = +d.pd[i]); d.st?.forEach((s, i) => cars[i] && (cars[i].st = s));
   d.ev.forEach(([n, ...a]) => Object.hasOwn(FX, n) && FX[n](...a));
   if (S.phase === prev) return;
-  if (S.phase === 'goal') { REPLAY = REC.splice(0); S.gs = Math.sign(B.p.z) || 1; S.shake = .8; }
+  if (S.phase === 'goal') { REPLAY = REC.splice(0); Object.assign(S, { gs: Math.sign(B.p.z) || 1, shake: .8, slow: 1.6 }); }
   if (S.phase === 'replay') S.rt = 0;
   if (S.phase === 'end') showEnd();
 }
