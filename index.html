@@ -20,6 +20,7 @@
     <div id="replay" class="hidden"><b>● REPLAY</b><small id="skip">Saut pour passer</small></div>
     <div id="msg"><b id="mb"></b><small id="ms"></small></div>
     <div id="toast"></div>
+    <div id="comment"><b>🎙️</b><span id="ct"></span></div>
     <div id="cam">CAMÉRA BALLE</div>
     <div id="boost">
       <svg viewBox="0 0 100 100"><defs><linearGradient id="bgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe680"/><stop offset="1" stop-color="#ff6a00"/></linearGradient></defs><circle cx="50" cy="50" r="42"/><circle id="ring" cx="50" cy="50" r="42"/></svg>
@@ -40,16 +41,37 @@
       <p class="sub">Le foot en voitures-fusées, directement dans ton navigateur</p>
       <div class="row"><span class="lbl">Mode</span><button data-m="1" class="on">1 v 1</button><button data-m="2">2 v 2</button><button data-m="3">3 v 3</button></div>
       <div class="row"><span class="lbl">Bots</span><button data-d="0">Débutant</button><button data-d="1" class="on">Pro</button><button data-d="2">All-Star</button></div>
+      <div class="row" id="themes"><span class="lbl">Ambiance</span></div>
+      <div class="row"><button id="play" class="big">JOUER</button><button id="seasonBtn" class="big alt">SAISON</button></div>
+      <div class="row"><button id="garageBtn">🔧 Garage</button><button id="onlineBtn">🌐 En ligne</button><span id="trophies"></span></div>
+      <p class="keys">
+        <kbd>W A S D</kbd> / <kbd>↑ ← ↓ →</kbd> conduire · <kbd>Espace</kbd> / clic droit sauter (×2 = flip) · <kbd>Shift</kbd> / clic gauche boost<br>
+        <kbd>X</kbd> drift (en l'air : rotation) · <kbd>Q</kbd> <kbd>E</kbd> rotation en l'air · <kbd>C</kbd> caméra balle · <kbd>M</kbd> son · <kbd>Échap</kbd> pause · 🎮 manette OK
+      </p>
+    </div>
+  </div>
+
+  <div id="garage" class="screen hidden">
+    <div class="panel">
+      <h2>Garage</h2>
       <div class="row" id="models"><span class="lbl">Voiture</span></div>
       <div class="row" id="accents"><span class="lbl">Couleur</span></div>
       <div class="row" id="trails"><span class="lbl">Boost</span></div>
+      <div class="row" id="motifs"><span class="lbl">Motif</span></div>
+      <div class="row" id="stickers"><span class="lbl">Sticker</span></div>
       <div class="row" id="booms"><span class="lbl">But</span></div>
-      <div class="row" id="themes"><span class="lbl">Ambiance</span></div>
-      <div class="row"><button id="play" class="big">JOUER</button><button id="onlineBtn" class="big alt">EN LIGNE</button></div>
-      <p class="keys">
-        <kbd>W A S D</kbd> / <kbd>↑ ← ↓ →</kbd> conduire · <kbd>Espace</kbd> / clic droit sauter (×2 = flip) · <kbd>Shift</kbd> / clic gauche boost<br>
-        <kbd>X</kbd> drift (en l'air : rotation) · <kbd>Q</kbd> <kbd>E</kbd> rotation en l'air · <kbd>C</kbd> caméra balle · <kbd>Échap</kbd> pause · 🎮 manette OK
-      </p>
+      <p id="gmsg"></p>
+      <button id="gback">Retour</button>
+    </div>
+  </div>
+
+  <div id="season" class="screen hidden">
+    <div class="panel">
+      <h2>Saison</h2>
+      <p id="sinfo"></p>
+      <table id="stable" class="tbl"></table>
+      <div class="row"><button id="splay" class="big">JOUER</button><button id="snew">Nouvelle saison</button><button id="sback">Retour</button></div>
+      <p id="srew" class="keys"></p>
     </div>
   </div>
 
@@ -74,7 +96,7 @@
     <div class="panel">
       <h1 id="ot"></h1>
       <p id="ox" class="sub"></p>
-      <table id="stats"></table>
+      <table id="stats" class="tbl"></table>
       <div class="row"><button id="oa" class="big"></button><button id="ob"></button></div>
     </div>
   </div>
@@ -84,6 +106,7 @@
   <script src="lib/three.min.js"></script>
   <script src="lib/peerjs.min.js"></script>
   <script src="scene.js"></script>
+  <script src="sons.js"></script>
   <script src="effets.js"></script>
   <script src="game.js"></script>
   <script src="touch.js"></script>

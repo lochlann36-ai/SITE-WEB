@@ -418,20 +418,114 @@ function makeBall() {
   m.castShadow = true; scene.add(m); return m;
 }
 
-// ===== Voitures : carrosserie profilée, vernis, vitres, phares, roues, boost =====
-const MODELS = { // profils de côté [avant, hauteur] de la caisse et du cockpit, largeurs, rayon des roues, aileron [largeur, hauteur, position]
-  'Éclair': { wr: .17, w: .82, cw: .62, wing: [.88, .2, -.58], body: [[-.62, -.2], [.56, -.2], [.68, -.08], [.63, .04], [.2, .1], [-.5, .12], [-.64, .06], [-.66, -.12]], cab: [[.22, .08], [0, .3], [-.32, .3], [-.52, .1]] },
-  'Requin': { wr: .16, w: .86, cw: .6, wing: [.98, .25, -.62], body: [[-.68, -.2], [.66, -.2], [.76, -.1], [.72, 0], [.25, .06], [-.55, .08], [-.7, .04], [-.72, -.12]], cab: [[.22, .05], [0, .2], [-.3, .2], [-.56, .06]] },
-  'Bloc': { wr: .2, w: .88, cw: .74, wing: null, body: [[-.6, -.18], [.6, -.18], [.67, -.05], [.65, .13], [.35, .17], [-.6, .17], [-.64, 0]], cab: [[.34, .16], [.2, .42], [-.4, .42], [-.52, .16]] },
+// ===== Voitures : carrosserie sculptée (sections lissées), livrée peinte (motif, sticker, numéro), cockpit vitré, jantes, phares =====
+const MODELS = { // sections [z, demi-largeur, bas, haut] de l'arrière vers l'avant, pour la caisse puis la bulle du cockpit ; n : forme plus ou moins carrée
+  'Éclair': { wr: .17, n: 3.4, wing: [.86, .23, -.56],
+    body: [[-.68, .3, -.13, .05], [-.65, .41, -.19, .13], [-.48, .43, -.2, .15], [-.15, .43, -.2, .14], [.2, .43, -.2, .1], [.48, .41, -.2, .04], [.64, .37, -.18, -.02], [.72, .27, -.14, -.07]],
+    cab: [[-.52, .22, .08, .15], [-.42, .31, .08, .3], [-.15, .32, .08, .33], [.05, .3, .06, .29], [.24, .22, .04, .13], [.3, .12, .04, .07]] },
+  'Requin': { wr: .16, n: 3, wing: [.98, .26, -.6],
+    body: [[-.73, .3, -.13, .03], [-.7, .42, -.19, .09], [-.5, .44, -.2, .11], [-.1, .44, -.2, .09], [.3, .43, -.2, .04], [.58, .4, -.2, -.03], [.74, .33, -.17, -.09], [.81, .2, -.14, -.11]],
+    cab: [[-.52, .2, .02, .09], [-.4, .29, .02, .21], [-.14, .3, .02, .23], [.06, .27, .0, .18], [.25, .17, -.02, .06], [.3, .08, -.02, .01]] },
+  'Bloc': { wr: .2, n: 5.5, wing: null,
+    body: [[-.65, .36, -.12, .13], [-.62, .44, -.17, .2], [-.3, .45, -.18, .21], [.2, .45, -.18, .21], [.5, .44, -.18, .17], [.65, .42, -.16, .1], [.71, .34, -.13, .04]],
+    cab: [[-.6, .3, .16, .3], [-.55, .38, .16, .42], [.1, .38, .16, .43], [.3, .36, .14, .37], [.42, .3, .11, .2], [.47, .2, .11, .15]] },
 };
-const glass = new THREE.MeshPhysicalMaterial({ color: 0x0a1018, metalness: .9, roughness: .05, clearcoat: 1, envMapIntensity: 2 });
+const chaikin = (st, n = 3) => { // lisse une suite de sections (coupe des coins de Chaikin, extrémités gardées)
+  for (let k = 0; k < n; k++) st = [st[0], ...st.slice(0, -1).flatMap((a, i) => [.75, .25].map(w => a.map((v, j) => v * w + st[i + 1][j] * (1 - w)))), st.at(-1)];
+  return st;
+};
+function loft(st, n, tum, tuck, seg = 40) { // surface fermée passant par les sections ; u fait le tour (0 dessous, .25 et .75 les côtés, .5 dessus), v va de l'arrière à l'avant
+  const z0 = st[0][0], z1 = st.at(-1)[0], pos = [], uv = [], idx = [], S = seg + 1, e = 2 / n, pw = (v, k) => Math.sign(v) * Math.abs(v) ** k;
+  st.forEach(([z, a, yb, yt]) => {
+    const ym = (yb + yt) / 2, h = (yt - yb) / 2;
+    for (let i = 0; i <= seg; i++) {
+      const f = i / seg * Math.PI * 2, y = ym - h * pw(Math.cos(f), e), t = (y - ym) / h;
+      pos.push(a * pw(Math.sin(f), e) * (1 - tum * Math.max(0, t) ** 2 - tuck * Math.max(0, -t) ** 3), y, z); uv.push(i / seg, (z - z0) / (z1 - z0));
+    }
+  });
+  for (let k = 0; k < st.length - 1; k++) for (let i = 0; i < seg; i++) { const a = k * S + i, b = a + S; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+  [0, st.length - 1].forEach((k, j) => { // bouchons à l'arrière et à l'avant
+    const c = pos.length / 3, [z, , yb, yt] = st[k]; pos.push(0, (yb + yt) / 2, z); uv.push(.5, j);
+    for (let i = 0; i < seg; i++) idx.push(...(j ? [c, k * S + i, k * S + i + 1] : [c, k * S + i + 1, k * S + i]));
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+const at = (st, z) => { const k = st.findIndex(s => s[0] >= z), i = k < 0 ? st.length - 1 : Math.max(1, k), a = st[i - 1], b = st[i], w = clamp((z - a[0]) / (b[0] - a[0] || 1), 0, 1); return a.map((v, j) => v + (b[j] - v) * w); }; // section à la position z
+// Livrée : la caisse est peinte dans une texture (côtés, dessus, bas de caisse), le cockpit dans une autre (vitres, montants, toit)
+const sides = (x, fn) => [1, -1].forEach(s => { x.save(); x.setTransform(0, 1, -s, 0, s > 0 ? 256 : 768, 0); fn(s); x.restore(); }); // repère d'un flanc : X de l'avant (0) vers l'arrière (512), Y vers le bas
+const poly = (x, pts) => { x.beginPath(); pts.forEach(([a, b]) => x.lineTo(a, b)); x.closePath(); x.fill(); };
+const MOTIFS = {
+  Uni() { },
+  Bandes(x, ac) { x.fillStyle = ac; x.fillRect(472, 0, 26, 512); x.fillRect(526, 0, 26, 512); sides(x, () => x.fillRect(0, -40, 512, 6)); },
+  Flammes(x, ac) {
+    sides(x, () => {
+      const g = x.createLinearGradient(0, 0, 330, 0); g.addColorStop(0, '#fff3a0'); g.addColorStop(.35, '#ff9a1a'); g.addColorStop(1, ac); x.fillStyle = g;
+      x.beginPath(); x.moveTo(0, -80); [330, 230, 300, 190, 270, 210].forEach((l, i) => { const y = -80 + i * 27; x.quadraticCurveTo(l * .55, y - 8, l, y + 12); x.quadraticCurveTo(l * .5, y + 16, l * .45, y + 27); }); x.lineTo(0, 82); x.fill();
+    });
+  },
+  'Éclairs'(x, ac) { x.fillStyle = ac; sides(x, () => { poly(x, [[10, -30], [170, -55], [150, -18], [320, -45], [300, -8], [500, -40], [270, 22], [290, -14], [120, 18], [140, -18]]); }); },
+  Damier(x, ac) { sides(x, () => { for (let i = 0; i < 22; i++) for (let j = 0; j < 3; j++) if ((i + j) % 2) { x.fillStyle = ac; x.globalAlpha = Math.max(0, 1 - i / 22); x.fillRect(i * 24, 30 + j * 24, 24, 24); } }); },
+  Camo(x, ac, base) { for (let i = 0; i < 120; i++) { x.fillStyle = [ac, '#0006', base, '#fff3'][i % 4]; x.beginPath(); for (let k = 0; k < 4; k++) x.arc(Math.random() * 1024 + rnd(40), Math.random() * 512 + rnd(40), 14 + Math.random() * 26, 0, 7); x.fill(); } },
+  Hexa(x, ac) { x.strokeStyle = ac; x.lineWidth = 4; for (let cy = 0; cy < 560; cy += 40) for (let cx = (cy / 40 % 2) * 23; cx < 1050; cx += 46) { x.globalAlpha = .25 + .75 * (cy / 512) ** 2; hexPath(x, cx, cy, 22); x.stroke(); } },
+  'Légende'(x) { // récompense de saison : vague dorée et filets or
+    const g = x.createLinearGradient(0, 0, 512, 0); g.addColorStop(0, '#fff2b0'); g.addColorStop(.5, '#e8b923'); g.addColorStop(1, '#8a6410');
+    sides(x, () => { x.fillStyle = g; x.beginPath(); x.moveTo(0, 60); x.bezierCurveTo(180, 70, 260, -70, 512, -50); x.lineTo(512, -22); x.bezierCurveTo(280, -40, 200, 100, 0, 96); x.fill(); });
+    x.fillStyle = '#e8b923'; [480, 540].forEach(c => x.fillRect(c, 0, 6, 512));
+  },
+};
+const STICKERS = {
+  Aucun() { },
+  'Étoile'(x, r) { poly(x, Array.from({ length: 10 }, (_, i) => { const a = i * Math.PI / 5 - Math.PI / 2, k = i % 2 ? r * .45 : r; return [Math.cos(a) * k, Math.sin(a) * k]; })); },
+  'Éclair'(x, r) { poly(x, [[.2, -1], [-.5, .1], [-.05, .1], [-.25, 1], [.55, -.2], [.1, -.2], [.35, -1]].map(([a, b]) => [a * r, b * r])); },
+  'Cœur'(x, r) { x.beginPath(); x.moveTo(0, r * .9); x.bezierCurveTo(-r * 1.3, 0, -r * .7, -r, 0, -r * .35); x.bezierCurveTo(r * .7, -r, r * 1.3, 0, 0, r * .9); x.fill(); },
+  'Crâne'(x, r) { x.beginPath(); x.arc(0, -r * .15, r * .8, 0, 7); x.fill(); x.fillRect(-r * .45, r * .3, r * .9, r * .55); x.fillStyle = '#111'; [-1, 1].forEach(s => { x.beginPath(); x.arc(s * r * .32, -r * .15, r * .22, 0, 7); x.fill(); }); poly(x, [[0, r * .12], [-r * .1, r * .32], [r * .1, r * .32]]); },
+  Couronne(x, r) { x.fillStyle = '#ffd34d'; poly(x, [[-1, .7], [-1, -.5], [-.5, 0], [0, -.9], [.5, 0], [1, -.5], [1, .7]].map(([a, b]) => [a * r, b * r])); },
+};
+const pickOf = (T, k, d) => T[Object.hasOwn(T, k) ? k : d]; // choix venu du réseau : seulement les entrées connues
+function sticker(x, k, cx, cy, r, ac) { x.save(); x.translate(cx, cy); x.shadowColor = '#000a'; x.shadowBlur = r * .15; x.fillStyle = '#fff'; x.strokeStyle = ac; pickOf(STICKERS, k, 'Aucun')(x, r); x.restore(); }
+function livery(r, num) { // texture de la caisse
+  const base = '#' + new C(COL[r.team]).getHexString();
+  return canvasTex(1024, 512, x => {
+    x.fillStyle = base; x.fillRect(0, 0, 1024, 512);
+    pickOf(MOTIFS, r.motif, 'Uni')(x, r.accent, base); x.globalAlpha = 1;
+    x.fillStyle = '#15171d'; x.fillRect(0, 0, 92, 512); x.fillRect(932, 0, 92, 512); x.fillStyle = r.accent; x.fillRect(92, 0, 5, 512); x.fillRect(927, 0, 5, 512); // bas de caisse + filet
+    x.strokeStyle = '#0008'; x.lineWidth = 2; x.beginPath(); x.moveTo(400, 150); x.lineTo(624, 150); x.moveTo(400, 420); x.lineTo(624, 420); x.stroke(); // capot, coffre
+    sides(x, s => {
+      x.strokeStyle = '#0008'; x.lineWidth = 2; x.beginPath(); [170, 335].forEach(X => { x.moveTo(X, -100); x.lineTo(X + 6, 95); }); x.stroke(); // portière
+      x.fillStyle = '#0b0d12'; poly(x, [[350, -10], [415, -22], [415, 30], [360, 30]]);                                         // prise d'air
+      x.translate(252, 10); x.scale(s, 1); x.font = 'italic 92px "Russo One", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.lineWidth = 10; x.strokeStyle = '#000c'; x.strokeText(num, 0, 0); x.fillStyle = '#fff'; x.fillText(num, 0, 0);    // numéro
+    });
+    sticker(x, r.sticker, 512, 92, 44, r.accent); // sticker sur le capot
+  });
+}
+function cabTex(r, rm) { // cockpit : vitres teintées, montants et toit peints ; rm = carte rugosité/métal (vitre lisse, peinture satinée)
+  const base = '#' + new C(COL[r.team]).getHexString(), [glassC, paintC] = rm ? ['rgb(0,10,235)', 'rgb(0,90,70)'] : ['#0a0f16', base];
+  return canvasTex(512, 256, x => {
+    x.fillStyle = glassC; x.fillRect(0, 0, 512, 256); x.fillStyle = x.strokeStyle = paintC; x.lineWidth = 12; x.lineCap = 'round';
+    x.beginPath(); (x.roundRect || x.rect).call(x, 198, 70, 116, 112, 18); x.fill(); // toit
+    x.beginPath(); [-1, 1].forEach(s => { x.moveTo(256 + s * 52, 76); x.lineTo(256 + s * 120, 20); x.moveTo(256 + s * 54, 128); x.lineTo(256 + s * 120, 132); x.moveTo(256 + s * 52, 176); x.lineTo(256 + s * 118, 238); }); x.stroke(); // montants
+    x.fillRect(0, 0, 512, 6); x.fillRect(0, 250, 512, 6);
+    if (rm) return;
+    if (r.motif === 'Bandes' || r.motif === 'Légende') { x.fillStyle = r.motif === 'Bandes' ? r.accent : '#e8b923'; x.fillRect(236, 70, 12, 112); x.fillRect(264, 70, 12, 112); }
+    sticker(x, r.sticker, 256, 126, 28, r.accent);
+  }, !rm);
+}
+const carbon = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: .5, roughness: .35, map: canvasTex(64, 64, x => { // fibre de carbone tissée
+  x.fillStyle = '#16181d'; x.fillRect(0, 0, 64, 64); for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { x.fillStyle = (i + j) % 2 ? '#2a2e36' : '#1c1f25'; x.fillRect(i * 8, j * 8, 8, 4); x.fillStyle = (i + j) % 2 ? '#1c1f25' : '#2a2e36'; x.fillRect(i * 8, j * 8 + 4, 8, 4); }
+}) });
+carbon.map.repeat.set(6, 6);
+const tread = new THREE.MeshStandardMaterial({ color: 0x1a1b1f, roughness: .9, bumpScale: 2, bumpMap: canvasTex(128, 16, x => { x.fillStyle = '#fff'; x.fillRect(0, 0, 128, 16); x.fillStyle = '#000'; for (let i = 0; i < 128; i += 8) poly(x, [[i, 0], [i + 3, 0], [i + 7, 8], [i + 3, 16], [i, 16], [i + 4, 8]]); }, false) });
+tread.bumpMap.repeat.set(5, 1);
 const rubber = new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: .85 }), dark = new THREE.MeshStandardMaterial({ color: 0x1a1d24, metalness: .7, roughness: .4 });
-const headMat = glow(0xeaf4ff, 5), flareMat = new THREE.SpriteMaterial({ map: radial, color: new C(.9, .95, 1).multiplyScalar(2.2), ...additive() });
-const paint = c => new THREE.MeshPhysicalMaterial({ color: c, metalness: .25, roughness: .38, clearcoat: 1, clearcoatRoughness: .06, envMapIntensity: .8 });
-const smooth = (pts, n = 2) => { // arrondit un profil (coupe des coins de Chaikin)
-  for (let k = 0; k < n; k++) pts = pts.flatMap(([x, y], i, a) => { const [u, v] = a[(i + 1) % a.length]; return [[x * .75 + u * .25, y * .75 + v * .25], [x * .25 + u * .75, y * .25 + v * .75]]; });
-  return pts;
-};
+const wallTex = new THREE.MeshStandardMaterial({ roughness: .8, transparent: true, alphaTest: .4, map: canvasTex(256, 256, x => { // inscriptions sur le flanc des pneus
+  x.font = 'bold 21px "Exo 2", sans-serif'; x.fillStyle = '#c9ced8'; x.textAlign = 'center'; const t = 'ROCKET BALL ✦ ROCKET BALL ✦ ';
+  [...t].forEach((ch, i) => { x.save(); x.translate(128, 128); x.rotate(i / t.length * Math.PI * 2); x.fillText(ch, 0, -104); x.restore(); });
+}) });
+const headMat = glow(0xeaf4ff, 3.5), flareMat = new THREE.SpriteMaterial({ map: radial, color: new C(.9, .95, 1).multiplyScalar(1.5), ...additive() });
+const poolMat = new THREE.MeshBasicMaterial({ map: radial, color: new C(1, .92, .78), ...additive() }), poolGeo = new THREE.PlaneGeometry(1.5, 3.2).rotateX(-Math.PI / 2); // lumière des phares au sol
+const paint = (c, o) => new THREE.MeshPhysicalMaterial({ color: c, metalness: .15, roughness: .4, clearcoat: 1, clearcoatRoughness: .05, envMapIntensity: .75, ...o });
 const chrome = new THREE.MeshStandardMaterial({ color: 0xc9ced8, metalness: 1, roughness: .15 });
 const flameMat = c => new THREE.ShaderMaterial({ // flamme animée : bruit qui défile, cœur blanc près du moteur
   uniforms: { c: { value: c }, t: { value: 0 } }, ...additive({ side: THREE.DoubleSide }),
@@ -457,46 +551,52 @@ function merge(geos) { // fusionne des géométries (positions, normales, UV) en
 function buildCar(r) {
   const M = MODELS[r.model] || MODELS['Éclair'], root = new THREE.Group(), body = new THREE.Group(), accent = paint(r.accent), team = paint(COL[r.team]), tailMat = glow(0xff2030, 2);
   const bucket = () => new Map(), BODY = bucket(), ROOT = bucket();
-  const put = (bk, geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0) => { const g = geo.clone().rotateX(rx).rotateY(ry).translate(x, y, z); (bk.get(mat) || bk.set(mat, []).get(mat)).push(g); };
-  const flush = (bk, to) => bk.forEach((geos, mat) => { const m = new THREE.Mesh(merge(geos), mat); m.castShadow = true; to.add(m); });
-  const box = (w, h, d, mat, x, y, z) => put(BODY, new THREE.BoxGeometry(w, h, d), mat, x, y, z);
-  const ext = (pts, w, mat) => put(BODY, new THREE.ExtrudeGeometry(new THREE.Shape(smooth(pts).map(([z, y]) => new THREE.Vector2(z, y))),
-    { depth: w - .08, bevelEnabled: true, bevelThickness: .04, bevelSize: .04, bevelSegments: 3 }).translate(0, 0, (.08 - w) / 2).rotateY(-Math.PI / 2), mat);
-  ext(M.body, M.w, team); ext(M.cab, M.cw, glass);
+  const put = (bk, geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => { const g = geo.clone().rotateX(rx).rotateY(ry).rotateZ(rz).translate(x, y, z); (bk.get(mat) || bk.set(mat, []).get(mat)).push(g); };
+  const flush = (bk, to, sh = true) => bk.forEach((geos, mat) => { const m = new THREE.Mesh(merge(geos), mat); m.castShadow = sh; to.add(m); });
+  const box = (w, h, d, mat, x, y, z, rx, ry, rz) => put(BODY, new THREE.BoxGeometry(w, h, d), mat, x, y, z, rx, ry, rz);
   const num = String(r.num ?? [...(r.name || '')].reduce((a, ch) => a + ch.charCodeAt(0), 0) % 98 + 1);
-  const decal = new THREE.MeshStandardMaterial({ roughness: .35, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, map: canvasTex(256, 108, x => {
-    x.fillStyle = r.accent; [0, 22].forEach(o => { x.beginPath(); x.moveTo(o, 108); x.lineTo(o + 50, 0); x.lineTo(o + 64, 0); x.lineTo(o + 14, 108); x.fill(); });
-    x.font = 'italic 84px "Russo One", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 8; x.strokeStyle = '#000b'; x.strokeText(num, 165, 58); x.fillStyle = '#fff'; x.fillText(num, 165, 58);
-  }) });
-  const top = Math.max(...M.cab.map(p => p[1])), front = Math.max(...M.body.map(p => p[0])), rear = Math.min(...M.body.map(p => p[0])), mid = (front + rear) / 2, half = M.w / 2;
-  box(.16, .025, .3, accent, 0, top + .045, -.06);                           // bande sur le toit
-  box(M.w * .96, .03, .16, dark, 0, -.205, front - .04);                      // lame avant
-  box(M.w * .8, .06, .1, dark, 0, -.17, rear + .03);                          // diffuseur
-  box(.3, .035, .2, dark, 0, .07, front - .3);                                // prise d'air sur le capot
-  if (M.wing) { const [w, y, z] = M.wing; box(w, .04, .2, accent, 0, y, z); [-.3, .3].forEach(x => box(.04, .14, .08, dark, x, y - .08, z + .03)); }
+  const st = chaikin(M.body), cab = chaikin(M.cab), front = st.at(-1)[0], rear = st[0][0], S = z => at(st, z);
+  put(BODY, loft(st, M.n, .22, .3), paint(0xffffff, { map: livery(r, num) }));                                                      // caisse peinte
+  put(BODY, loft(cab, M.n * .8, .42, 0), new THREE.MeshPhysicalMaterial({ map: cabTex(r), roughnessMap: cabTex(r, 1), metalnessMap: cabTex(r, 1), metalness: 1, roughness: 1, clearcoat: 1, clearcoatRoughness: .04, envMapIntensity: 1.6 })); // cockpit
+  const [, af, ybf, ytf] = S(front - .1), [, ar, ybr, ytr] = S(rear + .06);
+  box(af * 2.1, .018, .16, carbon, 0, ybf - .01, front - .1);                                         // lame avant
+  box(af * 1.1, .07, .04, dark, 0, ybf + .05, front - .045);                                          // calandre
+  box(ar * 1.7, .05, .14, carbon, 0, ybr + .015, rear + .07);                                         // diffuseur
+  [-.2, -.07, .07, .2].forEach(x => box(.012, .06, .1, carbon, x, ybr + .03, rear + .06));            // ailettes
+  box(ar * 1.75, .028, .03, tailMat, 0, ytr - .05, rear - .005);                                     // bande de feux arrière
   [-1, 1].forEach(s => {
-    box(.04, .05, (front - rear) * .42, dark, s * (half + .01), -.18, mid);    // bas de caisse
-    box(.02, .03, (front - rear) * .7, accent, s * (half + .025), -.04, mid);  // bande latérale
-    box(.07, .045, .035, team, s * (M.cw / 2 + .06), top - .13, .12);          // rétroviseur
-    put(BODY, new THREE.CylinderGeometry(.035, .042, .14, 12), chrome, s * .18, -.13, rear - .01, Math.PI / 2); // échappement
-    box(.16, .05, .06, headMat, s * .27, -.06, front - .02); box(.18, .045, .06, tailMat, s * .27, -.02, rear + .03); // phares, feux
-    const fl = new THREE.Sprite(flareMat); fl.scale.setScalar(.42); fl.position.set(s * .27, -.06, front + .04); body.add(fl); // halo des phares
-    const d = new THREE.Mesh(new THREE.PlaneGeometry(.52, .22), decal); d.position.set(s * (half + .006), -.07, mid + .02); d.rotation.y = s * Math.PI / 2; body.add(d); // numéro
+    const [, a] = S(front - .06);
+    box(.17, .028, .05, headMat, s * a * .58, ytf - .025, front - .06, 0, s * .35);                    // phares à LED
+    box(.09, .02, .04, headMat, s * a * .5, ybf + .06, front - .05, 0, s * .3);                       // feux de jour
+    box(.1, .06, .035, tailMat, s * ar * .72, ytr - .075, rear - .004);                               // feux stop
+    const fl = new THREE.Sprite(flareMat); fl.scale.setScalar(.22); fl.position.set(s * a * .58, ytf - .025, front + .02); body.add(fl); // halo des phares
+    box(.035, .03, .62, carbon, s * (S(0)[1] - .015), S(0)[2] + .025, -.01);                          // bas de caisse carbone
+    put(BODY, new THREE.CylinderGeometry(.036, .044, .12, 14, 1, true), chrome, s * .17, ybr + .04, rear + .02, Math.PI / 2); // échappements
+    put(BODY, new THREE.CircleGeometry(.034, 14), dark, s * .17, ybr + .04, rear - .035, 0, Math.PI);
+    box(.1, .012, .05, dark, s * .1, S(.42)[3] + .002, .42, -.12);                                    // ouïes du capot
+    const [cz, ca, cyb] = at(cab, .14); box(.11, .05, .04, team, s * (ca + .06), cyb + .05, cz + .02); box(.07, .015, .02, dark, s * (ca + .01), cyb + .04, cz + .02); // rétroviseurs
   });
+  if (M.wing) { // aileron profilé, dérives et supports carbone
+    const [w, y, z] = M.wing, foil = new THREE.Shape(); foil.moveTo(.11, 0); foil.quadraticCurveTo(0, .045, -.12, .012); foil.quadraticCurveTo(0, -.012, .11, 0);
+    put(BODY, new THREE.ExtrudeGeometry(foil, { depth: w, bevelEnabled: false }).translate(0, 0, -w / 2).rotateY(Math.PI / 2), accent, 0, y, z);
+    [-1, 1].forEach(s => { box(.012, .1, .26, carbon, s * w / 2, y - .01, z); box(.025, .13, .05, carbon, s * .26, y - .07, z + .02, -.25); });
+  }
   flush(BODY, body); root.add(body);
-  // Néon sous la voiture (couleur d'équipe)
+  // Néon sous la voiture (couleur d'équipe) et lumière des phares au sol
   const under = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: radial, color: new C(COL[r.team]).multiplyScalar(1.4), ...additive() }));
-  under.position.y = .02 - REST; root.add(under);
-  // Roues : pivot de direction > rotation > pneu arrondi + jante 5 branches ; ailes au-dessus
-  const wheels = [], tread = new THREE.CylinderGeometry(M.wr, M.wr, .12, 28).rotateZ(Math.PI / 2), side = new THREE.TorusGeometry(M.wr - .035, .035, 8, 28).rotateY(Math.PI / 2);
-  const disc = new THREE.CylinderGeometry(M.wr * .64, M.wr * .64, .172, 20).rotateZ(Math.PI / 2), spoke = new THREE.BoxGeometry(.176, M.wr * .52, .045).translate(0, M.wr * .28, 0);
-  const hub = new THREE.CylinderGeometry(.03, .03, .18, 10).rotateZ(Math.PI / 2);
+  const pool = new THREE.Mesh(poolGeo, poolMat); under.position.y = .02 - REST; pool.position.set(0, .025 - REST, front + 1.5); root.add(under, pool);
+  // Roues : pivot de direction (étrier fixe) > rotation > pneu sculpté, flanc marqué, jante à doubles branches, disque de frein ; ailes au-dessus
+  const wheels = [], wr = M.wr, tyre = new THREE.CylinderGeometry(wr, wr, .12, 32, 1, true).rotateZ(Math.PI / 2), side = new THREE.TorusGeometry(wr - .035, .035, 8, 32).rotateY(Math.PI / 2);
+  const lip = new THREE.TorusGeometry(wr * .66, .012, 6, 28).rotateY(Math.PI / 2), disc = new THREE.CylinderGeometry(wr * .52, wr * .52, .02, 24).rotateZ(Math.PI / 2);
+  const spoke = new THREE.BoxGeometry(.02, wr * .56, .022).translate(0, wr * .34, 0), hub = new THREE.CylinderGeometry(.035, .035, .03, 12).rotateZ(Math.PI / 2), ring = new THREE.RingGeometry(wr * .7, wr * .98, 40);
   for (const x of [-.43, .43]) for (const z of [-.38, .4]) {
-    const steer = new THREE.Group(), spin = new THREE.Group(), W4 = bucket(); steer.position.set(x, M.wr - REST, z); steer.add(spin); root.add(steer);
-    put(W4, tread, rubber); [-.06, .06].forEach(o => put(W4, side, rubber, o)); put(W4, disc, dark); put(W4, hub, chrome);
-    for (let i = 0; i < 5; i++) put(W4, spoke, accent, 0, 0, 0, i * Math.PI * .4);
-    flush(W4, spin);
-    put(ROOT, new THREE.TorusGeometry(M.wr + .05, .03, 6, 18, Math.PI), team, Math.sign(x) * (half + .02), M.wr - REST, z, 0, Math.PI / 2); // aile
+    const s = Math.sign(x), steer = new THREE.Group(), spin = new THREE.Group(), W4 = bucket(), CAL = bucket(); steer.position.set(x, wr - REST, z); steer.add(spin); root.add(steer);
+    put(W4, tyre, tread); [-.06, .06].forEach(o => put(W4, side, rubber, o)); put(W4, ring, wallTex, s * .097, 0, 0, 0, s * Math.PI / 2);
+    put(W4, disc, chrome, -s * .01); put(W4, lip, chrome, s * .07); put(W4, hub, accent, s * .07);
+    for (let i = 0; i < 12; i++) put(W4, spoke, i % 2 ? dark : accent, s * .066, 0, 0, i * Math.PI / 6 + (i % 2 ? .08 : 0));
+    put(CAL, new THREE.BoxGeometry(.04, .07, .05), accent, s * .03, wr * .38, -wr * .3, -.6); flush(W4, spin, false); flush(CAL, steer, false); // étrier (roues sans ombre portée : moins de calculs)
+    put(ROOT, new THREE.CylinderGeometry(wr + .06, wr + .06, .15, 20, 1, true, 0, Math.PI).rotateZ(Math.PI / 2), team, s * .43, wr - REST, z); // passage de roue
+    put(ROOT, new THREE.TorusGeometry(wr + .06, .018, 6, 20, Math.PI), carbon, s * .505, wr - REST, z, 0, Math.PI / 2);
     wheels.push({ steer, spin, front: z > 0 });
   }
   flush(ROOT, root);
@@ -504,13 +604,13 @@ function buildCar(r) {
   const flame = new THREE.Group(), fm = flameMat(new C(r.trail));
   flame.add(new THREE.Mesh(new THREE.ConeGeometry(.16, .9, 20, 4, true).rotateX(-Math.PI / 2), fm));
   flame.add(new THREE.Mesh(new THREE.ConeGeometry(.05, .3, 12, 1, true).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new C(r.trail).lerp(new C(1, 1, 1), .6).multiplyScalar(3), ...additive() })));
-  flame.children[1].position.z = .17; flame.position.set(0, -.02, rear - .47); flame.visible = false; root.add(flame);
+  flame.children[1].position.z = .17; flame.position.set(0, ybr + .06, rear - .47); flame.visible = false; root.add(flame);
   // Ombre de contact au sol, traînées des feux arrière
   const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: radial, color: 0, transparent: true, depthWrite: false }));
   blob.renderOrder = 1; scene.add(blob, root);
-  const tails = [-1, 1].map(s => ({ at: new V3(s * .27, -.02, rear), rb: ribbon(0xff2a40) }));
+  const tails = [-1, 1].map(s => ({ at: new V3(s * ar * .72, ytr - .075, rear), rb: ribbon(0xff2a40) }));
   root.userData.noEnv = blob.userData.noEnv = true;
-  return { root, body, wheels, flame, fm, blob, tails, tailMat, wr: M.wr, extra: [blob, ...tails.map(t => t.rb.m)] };
+  return { root, body, wheels, flame, fm, blob, pool, tails, tailMat, wr, extra: [blob, ...tails.map(t => t.rb.m)] };
 }
 function makeTag(name, team, bg) { // nom au-dessus des voitures
   const t = canvasTex(256, 64, x => {
@@ -527,7 +627,7 @@ const showroom = new THREE.Group();
 {
   const plat = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.1, .12, 64), new THREE.MeshStandardMaterial({ color: 0x14171f, metalness: .9, roughness: .25 }));
   const ring = new THREE.Mesh(new THREE.TorusGeometry(2, .035, 8, 96).rotateX(Math.PI / 2), glow(0x66ccff, 4));
-  const spot = new THREE.SpotLight(0xffffff, 70, 25, .5, .7, 1.3);
+  const spot = new THREE.SpotLight(0xffffff, 20, 25, .5, .7, 1.3);
   plat.position.y = .06; plat.receiveShadow = true; ring.position.y = .12; spot.position.set(2, 8, 4);
   showroom.add(plat, ring, spot, spot.target); showroom.userData.noEnv = true; scene.add(showroom);
 }
@@ -575,6 +675,7 @@ function applyTheme(name) {
   scene.fog.color.set(T.fog[0]); scene.fog.density = T.fog[1];
   hemi.color.set(T.hemi[0]); hemi.groundColor.set(T.hemi[1]); hemi.intensity = T.hemi[2];
   sun.color.set(T.key[0]); sun.intensity = T.key[1]; rim.color.set(T.rim[0]); rim.intensity = T.rim[1]; rim.position.copy(u.sun.value).multiplyScalar(100);
+  poolMat.color.setRGB(1, .92, .78).multiplyScalar(clamp(1.15 - T.hemi[2], 0, 1) * .8); // phares visibles au sol la nuit
   renderer.toneMappingExposure = T.exp; WALLS.forEach(m => m.emissiveIntensity = T.wall); crowdMat.color.set(T.crowd);
   LOOK.roof.set(T.roofCol || 0xfff0d8).multiplyScalar(T.roof); LOOK.shaft.set(...T.shaft[0]); LOOK.ring.set(0x9fd0ff).multiplyScalar(T.ring); LOOK.haze = T.haze;
   roofLight.color.copy(LOOK.roof); ringMat.color.copy(LOOK.ring);

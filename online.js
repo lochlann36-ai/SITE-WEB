@@ -4,7 +4,7 @@ const PREFIX = 'rocketball-v1-', ERRORS = {
   'peer-unavailable': 'Code introuvable', 'unavailable-id': 'Code déjà pris, réessaie', network: 'Pas de connexion au serveur de jeu (ouvre le jeu depuis le site)',
   'server-error': 'Serveur indisponible', 'browser-incompatible': 'Jeu en ligne bloqué ici : ouvre le jeu depuis le site',
 };
-let lobby = [], snapT = 0, sendT = 0; // lobby : invités de l'hôte { conn, name, model, accent, trail, boom }
+let lobby = [], snapT = 0, sendT = 0; // lobby : invités de l'hôte { conn, name, model, accent, trail, boom, motif, sticker }
 
 const netMsg = t => $('netmsg').textContent = t;
 function newPeer(id) {
@@ -45,7 +45,7 @@ function hostData(conn, d) {
   if (d.t === 'in') { const c = cars.find(c => c.conn === conn); if (c && !c.bot) Object.assign(c.in, d.i); }
   else if (d.t === 'hello' && !lobby.some(p => p.conn === conn)) {
     if (lobby.length >= 5 || S.phase !== 'menu') return conn.send({ t: 'full' });
-    lobby.push({ conn, name: String(d.name || 'Invité').slice(0, 12), model: d.model, accent: d.accent, trail: d.trail, boom: d.boom });
+    lobby.push({ conn, name: String(d.name || 'Invité').slice(0, 12), model: d.model, accent: d.accent, trail: d.trail, boom: d.boom, motif: d.motif, sticker: d.sticker });
     hostLobby();
   }
 }
@@ -60,7 +60,7 @@ function hostStart() { // équipes alternées, places libres complétées par de
   lobby.slice(S.mode * 2 - 1).forEach(p => p.conn.send({ t: 'full' }));
   humans.forEach((h, i) => teams[i % 2].push(h));
   teams.forEach((t, k) => { while (t.length < S.mode) t.push(botRoster(k, names.pop())); t.forEach(r => r.team = k); });
-  const roster = [...teams[0], ...teams[1]], pub = roster.map(({ team, name, model, accent, trail }) => ({ team, name, model, accent, trail }));
+  const roster = [...teams[0], ...teams[1]], pub = roster.map(({ team, name, model, accent, trail, motif, sticker }) => ({ team, name, model, accent, trail, motif, sticker }));
   NET.on = true; NET.ev = [];
   start(roster.map(r => ({ ...r, bot: !r.me && !r.conn })));
   roster.forEach((r, i) => r.conn?.send({ t: 'start', mode: S.mode, roster: pub, you: i, theme: THEME })); // tout le monde joue dans l'ambiance de l'hôte
@@ -86,7 +86,7 @@ function joinGame(code) {
   Object.assign(NET, { host: false, guest: true });
   peer.on('open', () => {
     const conn = NET.conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
-    conn.on('open', () => conn.send({ t: 'hello', name: GAR.name, model: GAR.model, accent: GAR.accent, trail: GAR.trail, boom: GAR.boom }));
+    conn.on('open', () => conn.send({ t: 'hello', name: GAR.name, model: GAR.model, accent: GAR.accent, trail: GAR.trail, boom: GAR.boom, motif: GAR.motif, sticker: GAR.sticker }));
     conn.on('data', guestData);
     conn.on('close', () => {
       if (!NET.guest) return;

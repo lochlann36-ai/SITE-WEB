@@ -97,7 +97,12 @@ const BOOMS = {
   Foudre(p) { // éclairs qui tombent du ciel sur la cage
     for (let i = 0; i < 6; i++) bolt(new V3(p.x + rnd(40), 70, p.z + rnd(24)), new V3(p.x + rnd(8), Math.max(0, p.y + rnd(3)), p.z + rnd(4)), .14, .55);
     for (let i = 0; i < (HQ ? 260 : 100); i++) FXA.emit(p, rdir(4 + Math.random() * 18), { c: pick([0xffffff, 0x9fd8ff, 0x6fa8ff]), l: .7, s: .18, k: 5, gr: 4 });
-    EFX.wave(p, 0x9fd8ff, 20, 2.2); snd(55, 1.8, 'sawtooth', .2, 28); return 0xbfd8ff;
+    EFX.wave(p, 0x9fd8ff, 20, 2.2); return 0xbfd8ff;
+  },
+  Royale(p) { // récompense de saison : couronne de pièces d'or, pluie dorée
+    for (let i = 0; i < 5; i++) { const a = i / 5 * 6.28; for (let j = 0; j < 30; j++) FXA.emit(p, new V3(Math.cos(a) * 9, 14 + j * .5, Math.sin(a) * 9).add(rdir(1.5)), { c: pick([0xffd34d, 0xfff2b0]), l: 2.2, s: .4, k: 4, gr: 9, d: .5 }); }
+    for (let i = 0; i < (HQ ? 200 : 80); i++) FXN.emit(p.clone().add(new V3(rnd(26), 8 + Math.random() * 8, rnd(18))), new V3(rnd(1), -2, rnd(1)), { c: pick([0xffd34d, 0xe8b923, 0xffffff]), l: 4.5, s: .2, d: .25 });
+    debrisBurst(p, [0xffd34d, 0xe8b923], 18, .9, 0x8a6410); EFX.wave(p, 0xffd34d, 24); EFX.wave(p, 0xffe9a0, 30, 1, true); return 0xffc840;
   },
 };
 const EFX = {
@@ -199,7 +204,7 @@ function animFx(dt, t) {
     if ((thunderT -= dt) < 0) {
       thunderT = 6 + Math.random() * 10; LOOK.light = 1;
       const a = Math.random() * 6.28, r = 160 + Math.random() * 90; bolt(new V3(Math.cos(a) * r, 170, Math.sin(a) * r), new V3(Math.cos(a) * r * .9, 40, Math.sin(a) * r * .9), 1.2, .45);
-      setTimeout(() => snd(45 + Math.random() * 20, 2.5, 'sawtooth', .18, 25), 400 + Math.random() * 900);
+      SFX.thunder();
     }
   }
   LOOK.light = Math.max(0, LOOK.light - dt * 2.5); const lf = LOOK.light * (Math.random() > .3 ? 1 : .3); // éclair qui vacille
@@ -215,11 +220,12 @@ function animFx(dt, t) {
   for (let i = rockets.length - 1; i >= 0; i--) {
     const r = rockets[i];
     if ((r.d -= dt) > 0) continue;
+    if (!r.up) { r.up = 1; SFX.launch(r.p.x, r.p.y, r.p.z); } // sifflement de la fusée
     r.v.y -= 9 * dt; r.p.addScaledVector(r.v, dt);
     FXA.emit(r.p, rdir(.6), { c: 0xffc070, l: .5, s: .25, k: 2 });
     if ((r.fuse -= dt) > 0) continue;
     for (let j = 0; j < (HQ ? 150 : 60); j++) FXA.emit(r.p, rdir(9 + Math.random() * 4), { c: r.c, l: 1.7, s: .6, k: 4, gr: 2.5, d: 1.3 });
-    snd(140 + Math.random() * 80, .5, 'triangle', .05, 50); rockets.splice(i, 1);
+    SFX.pop(r.p.x, r.p.y, r.p.z); rockets.splice(i, 1);
   }
   for (let k = 0; k < SK; k++) { skAge[k] += dt; const a = .55 * Math.max(0, 1 - skAge[k] / 10); for (let j = 0; j < 4; j++) skCol.set([.03, .05, .02, a], k * 16 + j * 4); }
   skGeo.attributes.color.needsUpdate = true;
