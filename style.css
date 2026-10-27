@@ -104,11 +104,11 @@ button.on { background: linear-gradient(180deg, #3d8dff, var(--blue2)); border-c
 .big:hover { filter: brightness(1.15); background: linear-gradient(90deg, var(--blue), #7a5cff 50%, var(--orange)); }
 .big.alt { background: #ffffff14; border: 2px solid var(--line); box-shadow: none; }
 .big.alt::after { display: none; }
-input { font: 700 15px var(--ui); color: var(--fg); background: #ffffff10; border: 2px solid var(--line); border-radius: 10px; padding: 9px 14px; width: 170px; user-select: text; }
+input { font: 700 15px var(--ui); color: var(--fg); background: #ffffff10; border: 2px solid var(--line); border-radius: 10px; padding: 9px 14px; width: 170px; user-select: text; -webkit-user-select: text; }
 #code { width: 130px; text-transform: uppercase; letter-spacing: 4px; text-align: center; font-family: var(--display); }
 #netmsg { min-height: 1.3em; color: var(--gold); font-weight: 700; }
 #lobby { display: grid; gap: 10px; justify-items: center; }
-#room { font: 30px var(--display); letter-spacing: 6px; color: var(--gold); user-select: text; text-shadow: 0 0 16px #ffb40088; }
+#room { font: 30px var(--display); letter-spacing: 6px; color: var(--gold); user-select: text; -webkit-user-select: text; text-shadow: 0 0 16px #ffb40088; }
 #players { list-style: none; padding: 0; display: grid; gap: 4px; font-weight: 700; }
 .keys { max-width: 620px; font-size: 13px; line-height: 2; opacity: .75; }
 kbd { font: 700 12px var(--ui); padding: 1px 7px; border: 1px solid #ffffff40; border-bottom-width: 3px; border-radius: 6px; background: #ffffff14; }
@@ -123,7 +123,7 @@ button.locked { opacity: .45; } button.locked::after { content: " 🔒"; } .swat
 #garage .panel { max-width: 660px; } #garage .row { position: relative; padding-left: 80px; } #garage .lbl { position: absolute; left: 0; top: 10px; } /* lignes repliées alignées */
 #gmsg { min-height: 1.3em; color: var(--gold); font-weight: 700; } #trophies { font: 20px var(--display); color: var(--gold); }
 #sinfo { font-weight: 700; font-size: 17px; } #srew { max-width: 520px; }
-#err { position: fixed; left: 12px; bottom: 12px; z-index: 10; max-width: min(560px, calc(100% - 24px)); padding: 10px 14px; border-radius: 8px; background: #b3261ee6; font-size: 14px; user-select: text; }
+#err { position: fixed; left: 12px; bottom: 12px; z-index: 10; max-width: min(560px, calc(100% - 24px)); padding: 10px 14px; border-radius: 8px; background: #b3261ee6; font-size: 14px; user-select: text; -webkit-user-select: text; }
 
 /* Grand écran : menu à gauche, voiture du garage à droite */
 @media (min-width: 700px) {

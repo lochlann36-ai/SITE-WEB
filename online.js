@@ -139,5 +139,5 @@ $('back').onclick = () => { netClose(); $('online').classList.add('hidden'); $('
 $('pseudo').oninput = e => { GAR.name = e.target.value.trim().slice(0, 12) || 'Joueur'; save(); };
 $('host').onclick = () => tryNet(hostGame);
 $('join').onclick = () => tryNet(() => joinGame($('code').value));
-$('code').onkeydown = e => e.key === 'Enter' && $('join').click();
+$('code').onkeydown = e => { if (e.key === 'Enter') $('join').click(); }; // ne rien renvoyer : « false » bloquerait la frappe
 $('launch').onclick = hostStart;
