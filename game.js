@@ -35,7 +35,7 @@ const NET = { on: false, host: false, guest: false, ev: [] };
 const FX = {
   snd, msg: (...a) => msg(...a),
   boom: (x, y, z, t) => EFX.boom(new V3(x, y, z), t),
-  explode: (x, y, z) => EFX.explode(new V3(x, y, z)),
+  explode: (x, y, z, t) => EFX.explode(new V3(x, y, z), t),
   spark: (x, y, z, s) => EFX.spark(new V3(x, y, z), s),
   demo: i => cars[i] === me && msg('DÉMOLI !', 1.5),
   pad: (i, k) => { const p = pads[k]; if (p) EFX.pad(p.x, p.z, p.big); if (cars[i] === me) snd(900, .12, 'sine', .05, 1500); },
@@ -182,7 +182,7 @@ function bumps() {
 }
 function demo(c) {
   c.dead = 3; c.boosting = false;
-  fx('explode', c.p.x, c.p.y, c.p.z); fx('snd', 80, .6, 'sawtooth', .2, 30); fx('demo', cars.indexOf(c));
+  fx('explode', c.p.x, c.p.y, c.p.z, c.team); fx('snd', 80, .6, 'sawtooth', .2, 30); fx('demo', cars.indexOf(c));
 }
 function respawn(c) { place(c, rnd(2 * GW), (c.team ? 1 : -1) * (L - 4)); c.boost = 33; }
 
@@ -301,7 +301,7 @@ let cars = [], me = null, preview = null, acc = 0, last = performance.now(), clo
 function msg(big, t, small = '', team) { // texte au centre de l'écran (relancé à chaque fois pour l'animation)
   const m = $('msg'); $('mb').textContent = big; $('ms').textContent = small;
   m.style.setProperty('--mc', team == null ? '#ffffff' : team ? '#ff7a1a' : '#1e7bff');
-  m.classList.remove('show'); void m.offsetWidth; m.classList.add('show'); S.msgT = t;
+  m.classList.toggle('band', team != null); m.classList.remove('show'); void m.offsetWidth; m.classList.add('show'); S.msgT = t;
 }
 function overlay(t, x, a, fa, b, fb) {
   $('ot').textContent = t; $('ox').textContent = x;
@@ -328,19 +328,20 @@ function start(roster = localRoster()) {
   ['menu', 'over', 'online'].forEach(i => $(i).classList.add('hidden'));
   $('hud').classList.remove('hidden'); $('touch').classList.toggle('hidden', !TOUCH_DEV); document.body.classList.add('playing');
   camera.clearViewOffset();
-  if (NET.guest) resetBall(); else kickoff();
+  if (NET.guest) resetBall(); else kickoff(true);
 }
 
-function kickoff() {
+function kickoff(intro) { // intro : survol du stade avant le premier coup d'envoi
   const spots = KO.slice().sort(() => Math.random() - .5);
   cars.forEach(c => {
     const [x, z] = spots[cars.filter(m => m.team === c.team).indexOf(c)], s = c.team ? -1 : 1;
     place(c, x * s, z * s); c.boost = 33;
   });
   resetBall(); pads.forEach(p => p.t = 0); REC.length = 0;
-  Object.assign(S, { phase: 'count', timer: 3, clock: false, last: null });
-  fx('msg', 3, 1, S.ot ? 'PROLONGATIONS' : ''); fx('snd', 440, .2, 'square', .08);
+  Object.assign(S, { phase: intro ? 'intro' : 'count', timer: intro ? 4.5 : 3, clock: false, last: null });
+  if (intro) fx('msg', 'ROCKET BALL', 4, `${S.mode} CONTRE ${S.mode}`); else countdown();
 }
+const countdown = () => { Object.assign(S, { phase: 'count', timer: 3 }); fx('msg', 3, 1, S.ot ? 'PROLONGATIONS' : ''); fx('snd', 440, .2, 'square', .08); };
 
 function goal(t) {
   S.score[t]++; Object.assign(S, { phase: 'goal', timer: 2.5, shake: .8, gs: Math.sign(B.p.z) }); B.mesh.visible = false;
@@ -361,16 +362,17 @@ function menu() {
   document.body.classList.remove('playing');
   cars.forEach(removeCar); cars = []; me = null; B.mesh.visible = false; showroom.visible = true; showPreview();
 }
-const removeCar = c => { scene.remove(c.mesh); scene.remove(c.tag); };
+const removeCar = c => scene.remove(c.mesh, c.tag, ...c.parts.extra);
 const quit = () => { if (NET.peer) netClose(); menu(); };
 function pause() {
-  if (!['count', 'play', 'goal', 'replay'].includes(S.phase)) return;
+  if (!['intro', 'count', 'play', 'goal', 'replay'].includes(S.phase)) return;
   if ($('over').classList.toggle('hidden')) return void (S.paused = false);
   S.paused = !NET.on; // en ligne, la partie continue
   overlay(NET.on ? 'MENU' : 'PAUSE', '', 'Reprendre', pause, 'Quitter', quit);
 }
 
 function tick(dt) {
+  if (S.phase === 'intro') { playerInput(me); if ((S.timer -= dt) <= 0 || (me.in.jump && !me.pj)) countdown(); me.pj = me.in.jump; return; } // saut = passer
   if (S.phase === 'count') { // compte à rebours : tout est figé
     const n = Math.ceil(S.timer);
     if ((S.timer -= dt) <= 0) { S.phase = 'play'; fx('msg', 'GO !', .8); fx('snd', 880, .5, 'square', .1); }
@@ -418,9 +420,16 @@ function playReplay(dt) {
 const camP = new V3(0, 20, -70), camL = new V3(), back = new V3(0, 0, -1), camUp = UP.clone();
 function updCam(dt) {
   const c = me, k = 1 - Math.exp(-12 * dt);
-  if (S.phase === 'replay') { // caméra de replay : derrière la balle, tournée vers la cage
+  const u = S.rt * 60 / Math.max(1, REPLAY.length);
+  if (S.phase === 'intro') { // survol : on tourne autour du stade et on descend derrière sa voiture
+    const e = 1 - (S.timer / 4.5) ** 3, end = c.p.clone().add(c.p.clone().sub(B.p).setY(0).normalize().multiplyScalar(3.6)).setY(c.p.y + 1.4);
+    const a = Math.atan2(end.x, end.z) + 2.4 * (1 - e), r = 85 + (Math.hypot(end.x, end.z) - 85) * e;
+    camP.set(Math.sin(a) * r, 40 + (end.y - 40) * e, Math.cos(a) * r); camL.set(0, 1, 0);
+  } else if (S.phase === 'replay') { // replay : derrière la balle, puis vue depuis le fond de la cage
     const bp = B.mesh.position;
-    camP.lerp(new V3(bp.x * .8, Math.max(bp.y, 1) + 3.5, bp.z - S.gs * 10), k * .5); camL.lerp(bp, k);
+    if (u < .55) camP.lerp(new V3(bp.x * .8, Math.max(bp.y, 1) + 3.5, bp.z - S.gs * 10), k * .5);
+    else camP.lerp(new V3(clamp(bp.x * .3, 2.5 - GW, GW - 2.5), 2.6, S.gs * (L + GD - 1.5)), u < .58 ? 1 : k);
+    camL.lerp(bp, k);
   } else if (!c.dead) {
     const nb = ballCam ? c.p.clone().sub(B.p).setY(0) : c.ground ? fwd(c).negate() : c.v.clone().negate().setY(0);
     if (nb.lengthSq() > .1) back.copy(nb.normalize());
@@ -432,7 +441,7 @@ function updCam(dt) {
   camera.position.copy(camP).add(new V3(rnd(S.shake), rnd(S.shake), rnd(S.shake)));
   camera.lookAt(camL);
   S.shake = Math.max(0, S.shake - dt);
-  const fov = S.phase === 'replay' ? 62 : 78 + (c.dead ? 0 : c.v.length() >= SUPER ? 9 : c.boosting ? 4 : 0); // effet de vitesse
+  const fov = S.phase === 'replay' ? (u < .55 ? 62 : 50) : S.phase === 'intro' ? 60 : 78 + (c.dead ? 0 : c.v.length() >= SUPER ? 9 : c.boosting ? 4 : 0); // effet de vitesse
   camera.fov += (fov - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix();
 }
 
@@ -454,6 +463,14 @@ function animCar(c, dt) {
   if (c.sup && on) FXA.emit(p.clone().addScaledVector(f, -.6).add(rdir(.15)), f.clone().negate(), { c: COL[c.team], l: .45, s: .3, k: 2 });
   if (on && c.ground && c.in.drift && c.v.length() > 5) FXN.emit(p.clone().addScaledVector(f, -.4).addScaledVector(upv(c), -.3), rdir(.8), { c: 0xd8d8e0, l: .8, s: .25, g: 1.4, a: .3 });
   c.tag.visible = on && c !== me; c.tag.position.copy(p).y += 1.25; // nom au-dessus de la voiture
+  P.fm.uniforms.t.value = clockT; m.updateMatrixWorld();
+  const h = p.y - REST; // ombre de contact sous la voiture
+  P.blob.visible = on && h < 4; P.blob.position.set(p.x, .03, p.z); P.blob.rotation.y = Math.atan2(f.x, f.z); P.blob.material.opacity = .7 * (1 - h / 4);
+  const right = new V3(1, 0, 0).applyQuaternion(m.quaternion); // traînées des feux arrière quand on va vite
+  P.tails.forEach(t => t.rb.update(P.body.localToWorld(t.at.clone()), right, on && c.v.length() > 13));
+  if (on && c.ground && c.in.drift && c.v.length() > 5 && upv(c).y > .9) // traces de pneus en drift
+    P.wheels.filter(w => !w.front).forEach((w, j) => { const q = w.steer.getWorldPosition(new V3()).setY(.02), sk = c.sk ||= []; if (!sk[j]) sk[j] = q; else if (sk[j].distanceTo(q) > .3) { skid(sk[j], q); sk[j] = q; } });
+  else c.sk = null;
 }
 
 function hud(dt) {
@@ -464,6 +481,7 @@ function hud(dt) {
   $('boost').classList.toggle('full', me.boost >= 100); $('cam').classList.toggle('on', ballCam);
   $('replay').classList.toggle('hidden', S.phase !== 'replay'); $('skip').classList.toggle('hidden', NET.guest);
   $('speed').style.opacity = me.dead || S.phase === 'replay' ? 0 : clamp((me.v.length() - 15) / 8, 0, 1);
+  POST.speed = S.phase === 'play' && !me.dead ? clamp((me.v.length() - 17) / 6, 0, 1) * .8 : 0; POST.t = clockT; // flou de vitesse
   if (S.msgT > 0 && (S.msgT -= dt) <= 0) $('msg').classList.remove('show');
 }
 
@@ -494,7 +512,7 @@ function showPreview() {
 function menuView(dt) {
   clockT += dt;
   const m = preview.mesh; m.quaternion.setFromAxisAngle(UP, clockT * .5); m.position.y = REST + .12;
-  animCar(preview, dt); preview.tag.visible = false; animPads(clockT); animFx(dt, clockT);
+  animCar(preview, dt); preview.tag.visible = false; animPads(clockT); animFx(dt, clockT); POST.speed = 0; POST.t = clockT;
   camera.fov = 50; camera.position.set(3, 1.35, 2.4); camera.lookAt(0, .4, 0); camera.updateProjectionMatrix();
   if (innerWidth >= 700) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * .2, 0, innerWidth, innerHeight); else camera.clearViewOffset();
 }

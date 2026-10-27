@@ -68,7 +68,7 @@ function hostStart() { // équipes alternées, places libres complétées par de
 const r2 = x => Math.round(x * 100) / 100;
 function sendSnap() {
   const d = {
-    t: 's', ph: S.phase, sc: S.score, tm: r2(S.time), ot: S.ot, bv: +B.mesh.visible, pd: pads.map(p => +(p.t > 0)).join(''), ev: NET.ev.splice(0),
+    t: 's', ph: S.phase, sc: S.score, tm: r2(S.time), tr: r2(S.timer), ot: S.ot, bv: +B.mesh.visible, pd: pads.map(p => +(p.t > 0)).join(''), ev: NET.ev.splice(0),
     b: [...B.p.toArray(), ...B.v.toArray()].map(r2),
     c: cars.map(c => [...c.p.toArray(), ...c.q.toArray(), ...c.v.toArray()].map(r2).concat(Math.round(c.boost), (c.dead > 0) | c.boosting << 1 | c.ground << 2)),
   };
@@ -102,7 +102,7 @@ function guestData(d) {
 }
 function applySnap(d) {
   const prev = S.phase;
-  Object.assign(S, { phase: d.ph, score: d.sc, time: d.tm, ot: d.ot });
+  Object.assign(S, { phase: d.ph, score: d.sc, time: d.tm, timer: d.tr, ot: d.ot });
   NET.snap = d; NET.age = 0;
   d.c.forEach((a, i) => { const c = cars[i]; if (c) Object.assign(c, { boost: a[10], dead: a[11] & 1, boosting: !!(a[11] & 2), ground: !!(a[11] & 4) }).v.fromArray(a, 7); });
   B.v.fromArray(d.b, 3); B.mesh.visible = !!d.bv;

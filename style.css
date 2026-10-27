@@ -34,6 +34,9 @@ canvas { display: block; position: fixed; inset: 0; }
 #msg b { display: block; font: clamp(56px, 11vw, 130px) var(--display); font-style: italic; letter-spacing: 3px; line-height: 1;
   background: linear-gradient(180deg, #fff 30%, var(--mc)); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 0 22px var(--mc)) drop-shadow(0 6px 10px #000c); }
+#msg.band::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 50%; height: 190px; margin-top: -110px; opacity: .5;
+  background: linear-gradient(90deg, transparent, var(--mc) 22%, var(--mc) 78%, transparent); transform: skewY(-4deg); animation: band .45s ease-out both; }
+@keyframes band { from { transform: skewY(-4deg) scaleX(0); } }
 #msg small { display: inline-block; margin-top: 10px; padding: 4px 18px; font: 800 italic 22px var(--ui); letter-spacing: 5px; background: linear-gradient(90deg, transparent, #000a, transparent); }
 #msg small:empty { display: none; }
 
